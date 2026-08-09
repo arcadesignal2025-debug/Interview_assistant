@@ -64,12 +64,14 @@ export interface SkillScore {
 }
 
 export interface InterviewAPIResponse {
-  reply: string;
-  done: boolean;
+  reply?: string;
+  done?: boolean;
   feedback?: FeedbackData;
   skillChart?: SkillScore[];
   terminated?: boolean;
   terminationReason?: string;
+  buildVersion?: string;
+  error?: string;
 }
 
 export interface StartInterviewRequest {
@@ -79,6 +81,8 @@ export interface StartInterviewRequest {
 
 export interface TurnInterviewRequest {
   sessionId: string;
+  candidate: Candidate;
   message?: string;
   action?: 'terminate_violation';
+  history?: Array<{ sender: ChatMessage['sender']; text: string; timestamp?: string }>;
 }
