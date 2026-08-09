@@ -38,8 +38,9 @@ export default function Home() {
       const res = await fetch('/api/interview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cache: 'no-store', body: JSON.stringify({ sessionId: newSessionId, candidate }) });
       const data = await parseResponse(res);
       console.info('Interview API build:', data.buildVersion);
-      if (!data.reply) throw new Error('Interview service returned no opening question.');
-      setMessages([{ id: 'interviewer-1', sender: 'interviewer', text: data.reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      const reply = data.reply;
+      if (!reply) throw new Error('Interview service returned no opening question.');
+      setMessages([{ id: 'interviewer-1', sender: 'interviewer', text: reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to start interview.';
       console.error('Failed to initialize interview:', err); setErrorMessage(message); setView('selector');
@@ -55,7 +56,8 @@ export default function Home() {
       const res = await fetch('/api/interview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cache: 'no-store', body: JSON.stringify({ sessionId, candidate: selectedCandidate, message: text, history: historyForServer }) });
       const data = await parseResponse(res);
       console.info('Interview API build:', data.buildVersion);
-      if (data.reply) setMessages(prev => [...prev, { id: `interviewer-${Date.now()}`, sender: 'interviewer', text: data.reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      const reply = data.reply;
+      if (reply) setMessages(prev => [...prev, { id: `interviewer-${Date.now()}`, sender: 'interviewer', text: reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
       if (data.done) { setFinalFeedback(data.feedback || FALLBACK_FEEDBACK); setSkillChart(data.skillChart || []); setView('feedback'); }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to send response.';
