@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import curriculumData from '@/data/curriculum.json';
 import { Candidate, CurriculumDay, SkillScore, FeedbackData } from '@/types/interview';
 
-const BUILD_VERSION = 'adaptive-v6-evidence-scoring';
+const BUILD_VERSION = 'adaptive-v7-evidence-aware';
 const MAX_HISTORY_ITEMS = 40;
 const MAX_TEXT_LENGTH = 4000;
 
@@ -117,16 +117,12 @@ function containsConcept(answer: string, concept: string): boolean {
   return a.includes(c);
 }
 
-// Evidence-based rubric: short acknowledgements should score low, while technically
-// grounded answers earn points for the curriculum's objectives, mechanism, failure modes,
-// adjacent concepts, tools, and enough explanation to demonstrate reasoning.
 function score(s: Session, topic: CurriculumDay, answer: string) {
   const words = answer.split(/\s+/).filter(Boolean);
   const n = words.length;
   const lower = answer.toLowerCase();
-
-  let value = 25;
-  value += Math.min(20, Math.floor(n / 5) * 2); // explanation depth, capped
+  let value = 20;
+  value += Math.min(20, Math.floor(n / 5) * 2);
 
   const objectiveHits = topic.objectives.filter(x => containsConcept(answer, x)).length;
   const failureHits = topic.commonFailureModes.filter(x => containsConcept(answer, x)).length;
@@ -138,20 +134,38 @@ function score(s: Session, topic: CurriculumDay, answer: string) {
   value += Math.min(10, adjacentHits * 3);
   value += Math.min(10, toolHits * 3);
 
-  // Reward explicit reasoning structure, not filler words.
   if (/\b(because|therefore|so that|trade[- ]?off|first|then|finally|measure|monitor|validate|fallback|test|observe|audit)\b/i.test(answer)) value += 8;
-  if (n < 3) value = Math.min(value, 30);
-  else if (n < 8) value = Math.min(value, 45);
+  if (n < 3) value = Math.min(value, 25);
+  else if (n < 8) value = Math.min(value, 40);
 
   value = Math.max(0, Math.min(100, value));
   const old = s.scores[topic.day];
   s.scores[topic.day] = old ? { ...old, totalScore: old.totalScore + value, count: old.count + 1 } : { totalScore: value, count: 1, topic: topic.title };
 }
 
+function evidenceStats(s: Session) {
+  const answers = s.transcript.filter(t => t.role === 'candidate');
+  const wordCounts = answers.map(a => a.text.split(/\s+/).filter(Boolean).length);
+  const averageWords = wordCounts.length ? wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length : 0;
+  const substantiveAnswers = wordCounts.filter(n => n >= 8).length;
+  return { answers: answers.length, averageWords, substantiveAnswers };
+}
+
 async function makeFeedback(s: Session): Promise<FeedbackData> {
+  const stats = evidenceStats(s);
+  // Never let an LLM invent strengths when the transcript contains too little evidence.
+  if (stats.substantiveAnswers < 2 || stats.averageWords < 8) {
+    return {
+      summary: `Insufficient technical evidence to make a reliable depth assessment. The candidate provided ${stats.answers} answer${stats.answers === 1 ? '' : 's'}, averaging ${Math.round(stats.averageWords)} words per answer, with only ${stats.substantiveAnswers} substantive response${stats.substantiveAnswers === 1 ? '' : 's'}.`,
+      strengths: ['No reliable technical strengths could be established from the available responses.'],
+      gaps: ['Responses were too brief to demonstrate technical reasoning, trade-offs, or implementation depth.', 'Provide concrete architecture decisions, validation steps, failure handling, and measurable evidence in future responses.'],
+      next: ['Answer with a clear approach, rationale, and trade-offs.', 'Use concrete production examples and explain how you would validate the design.'],
+    };
+  }
+
   if (anthropic) {
     try {
-      const r = await anthropic.messages.create({ model: MODEL, max_tokens: 450, temperature: 0.2, messages: [{ role: 'user', content: `Evaluate this technical interview using only transcript evidence. Return JSON with exactly summary, strengths, gaps, next. Candidate: ${s.candidate.name}, ${s.candidate.jobRole}. Transcript: ${JSON.stringify(s.transcript.slice(-16))}` }] });
+      const r = await anthropic.messages.create({ model: MODEL, max_tokens: 450, temperature: 0.2, messages: [{ role: 'user', content: `Evaluate this technical interview using only transcript evidence. Do not infer skills that are not demonstrated. Return JSON with exactly summary, strengths, gaps, next. Candidate: ${s.candidate.name}, ${s.candidate.jobRole}. Transcript: ${JSON.stringify(s.transcript.slice(-16))}` }] });
       const raw = r.content[0]?.type === 'text' ? r.content[0].text.trim().replace(/^```json\s*/i, '').replace(/```$/i, '') : '';
       const parsed = JSON.parse(raw) as FeedbackData;
       if (parsed.summary && Array.isArray(parsed.strengths) && Array.isArray(parsed.gaps) && Array.isArray(parsed.next)) return parsed;
@@ -160,4 +174,8 @@ async function makeFeedback(s: Session): Promise<FeedbackData> {
   return { summary: `The interview assessed production-oriented healthcare chatbot reasoning across ${s.coveredDays.size} curriculum areas.`, strengths: ['Engaged with production-oriented scenarios', 'Provided observable technical reasoning'], gaps: ['Some advanced trade-offs need deeper explanation', 'Continue strengthening failure-mode analysis'], next: ['Practice architecture decisions with measurable evidence', 'Rehearse failure recovery, observability, and validation'] };
 }
 
-function chart(s: Session): SkillScore[] { return Object.entries(s.scores).map(([day, x]) => ({ topic: x.topic, day: Number(day), depthScore: Math.round(x.totalScore / x.count) })); }
+function chart(s: Session): SkillScore[] {
+  return Object.entries(s.scores)
+    .map(([day, x]) => ({ topic: x.topic, day: Number(day), depthScore: Math.round(x.totalScore / x.count) }))
+    .sort((a, b) => a.day - b.day);
+}
