@@ -3,9 +3,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import curriculumData from '@/data/curriculum.json';
 import { Candidate, CurriculumDay, SkillScore, FeedbackData } from '@/types/interview';
 
-const BUILD_VERSION = 'adaptive-v4-deterministic-questions';
+const BUILD_VERSION = 'adaptive-v5-hardened';
+const MAX_HISTORY_ITEMS = 40;
+const MAX_TEXT_LENGTH = 4000;
+
 type Turn = { role: 'interviewer' | 'candidate'; text: string; day?: number; action?: string };
-type Session = { sessionId: string; candidate: Candidate; topicPlan: CurriculumDay[]; currentTopicIndex: number; questionCount: number; coveredDays: Set<number>; transcript: Turn[]; scores: Record<number, { totalScore: number; count: number; topic: string }> };
+type ScoreEntry = { totalScore: number; count: number; topic: string };
+type Session = { sessionId: string; candidate: Candidate; topicPlan: CurriculumDay[]; currentTopicIndex: number; questionCount: number; coveredDays: Set<number>; transcript: Turn[]; scores: Record<number, ScoreEntry> };
 
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
@@ -13,46 +17,86 @@ const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { sessionId, candidate, message, action, history } = body;
-    if (!sessionId) return NextResponse.json({ error: 'sessionId is required', buildVersion: BUILD_VERSION }, { status: 400 });
+    const { sessionId, candidate, message, action, history } = body as {
+      sessionId?: unknown;
+      candidate?: Candidate;
+      message?: unknown;
+      action?: unknown;
+      history?: unknown;
+    };
+
+    if (typeof sessionId !== 'string' || sessionId.length < 8 || sessionId.length > 200) {
+      return NextResponse.json({ error: 'A valid sessionId is required.', buildVersion: BUILD_VERSION }, { status: 400 });
+    }
 
     if (action === 'terminate_violation') {
-      return NextResponse.json({ buildVersion: BUILD_VERSION, reply: 'Interview terminated due to extended focus-loss violation. Session locked.', done: true, terminated: true, terminationReason: 'Security & focus-loss proctoring timeout exceeded.', feedback: { summary: 'Interview session terminated early due to extended focus-loss violation.', strengths: ['Initial engagement registered before termination'], gaps: ['Incomplete assessment due to security protocol violation'], next: ['Retake the technical interview in a distraction-free environment'] } });
+      return NextResponse.json({
+        buildVersion: BUILD_VERSION,
+        reply: 'Interview terminated due to extended focus-loss violation. Session locked.',
+        done: true,
+        terminated: true,
+        terminationReason: 'Security & focus-loss proctoring timeout exceeded.',
+        feedback: {
+          summary: 'Interview session terminated early due to extended focus-loss violation.',
+          strengths: ['Initial engagement registered before termination'],
+          gaps: ['Incomplete assessment due to security protocol violation'],
+          next: ['Retake the technical interview in a distraction-free environment'],
+        },
+      });
     }
-    if (!candidate) return NextResponse.json({ error: 'candidate is required', buildVersion: BUILD_VERSION }, { status: 400 });
+
+    if (!isCandidate(candidate)) {
+      return NextResponse.json({ error: 'A complete candidate profile is required.', buildVersion: BUILD_VERSION }, { status: 400 });
+    }
 
     const session = init(sessionId, candidate);
     restore(session, history);
-    const answer = typeof message === 'string' ? message.trim() : '';
+    const answer = typeof message === 'string' ? message.trim().slice(0, MAX_TEXT_LENGTH) : '';
 
     if (!answer) {
       const q = makeQuestion(session, true, 'start');
-      console.info('[interview]', BUILD_VERSION, 'start', q.slice(0, 80));
       return NextResponse.json({ buildVersion: BUILD_VERSION, reply: q, done: false });
     }
 
-    const alreadyRecorded = session.transcript.some(t => t.role === 'candidate' && normalize(t.text) === normalize(answer));
-    if (!alreadyRecorded) session.transcript.push({ role: 'candidate', text: answer, day: session.topicPlan[session.currentTopicIndex]?.day });
-    session.questionCount = session.transcript.filter(t => t.role === 'candidate').length;
-
-    const currentTopic = session.topicPlan[session.currentTopicIndex] || session.topicPlan[0];
-    if (currentTopic) { session.coveredDays.add(currentTopic.day); score(session, currentTopic, answer); }
+    // The browser history is the source of truth. Process this answer once per request.
+    session.transcript.push({ role: 'candidate', text: answer, day: session.topicPlan[session.currentTopicIndex]?.day });
+    const answerIndex = session.questionCount;
+    const answerTopic = session.topicPlan[Math.min(answerIndex, Math.max(0, session.topicPlan.length - 1))];
+    if (answerTopic) {
+      session.coveredDays.add(answerTopic.day);
+      score(session, answerTopic, answer);
+    }
+    session.questionCount += 1;
+    session.currentTopicIndex = Math.min(session.questionCount, Math.max(0, session.topicPlan.length - 1));
 
     if (session.questionCount >= 8 && session.coveredDays.size >= 4) {
       const finalFeedback = await makeFeedback(session);
-      return NextResponse.json({ buildVersion: BUILD_VERSION, reply: 'Interview completed. Thank you for walking through these technical scenarios with me.', done: true, feedback: finalFeedback, skillChart: chart(session) });
+      return NextResponse.json({
+        buildVersion: BUILD_VERSION,
+        reply: 'Interview completed. Thank you for walking through these technical scenarios with me.',
+        done: true,
+        feedback: finalFeedback,
+        skillChart: chart(session),
+      });
     }
 
     const words = answer.split(/\s+/).filter(Boolean).length;
     const actionTaken = words < 8 ? 'probe' : words < 30 ? 'perturb' : session.questionCount % 3 === 0 ? 'pivot' : 'escalate';
-    session.currentTopicIndex = Math.min(Math.floor(session.questionCount / 3), Math.max(0, session.topicPlan.length - 1));
     const q = makeQuestion(session, false, actionTaken);
-    console.info('[interview]', BUILD_VERSION, 'turn', session.questionCount, actionTaken, q.slice(0, 80));
     return NextResponse.json({ buildVersion: BUILD_VERSION, reply: q, done: false });
-  } catch (e: any) {
-    console.error('[interview]', BUILD_VERSION, e);
-    return NextResponse.json({ error: e?.message || 'Internal Server Error', buildVersion: BUILD_VERSION }, { status: 500 });
+  } catch (error: unknown) {
+    console.error('[interview]', BUILD_VERSION, error);
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    return NextResponse.json({ error: message, buildVersion: BUILD_VERSION }, { status: 500 });
   }
+}
+
+function isCandidate(value: unknown): value is Candidate {
+  if (!value || typeof value !== 'object') return false;
+  const c = value as Candidate;
+  return typeof c.id === 'string' && c.id.length > 0 && typeof c.name === 'string' && c.name.length > 0
+    && typeof c.jobRole === 'string' && typeof c.yearsExperience === 'number' && Number.isFinite(c.yearsExperience)
+    && Array.isArray(c.missions) && Array.isArray(c.signals);
 }
 
 function normalize(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
@@ -67,26 +111,31 @@ function init(sessionId: string, candidate: Candidate): Session {
   const source = personalized.length >= 5 ? personalized : days;
   const seed = hash(sessionId + candidate.id);
   const topicPlan = [...source].sort((a, b) => rand(seed + a.day) - rand(seed + b.day)).slice(0, 7);
-  return { sessionId, candidate, topicPlan, currentTopicIndex: 0, questionCount: 0, coveredDays: new Set(), transcript: [], scores: {} };
+  return { sessionId, candidate, topicPlan, currentTopicIndex: 0, questionCount: 0, coveredDays: new Set<number>(), transcript: [], scores: {} };
 }
 
-function restore(s: Session, history: any) {
+function restore(s: Session, history: unknown) {
   if (!Array.isArray(history)) return;
-  for (const item of history) {
-    if (!item || typeof item.text !== 'string') continue;
-    const role = item.sender === 'candidate' ? 'candidate' : item.sender === 'interviewer' ? 'interviewer' : null;
-    if (!role) continue;
-    const text = item.text.trim(); if (!text) continue;
-    if (!s.transcript.some(t => t.role === role && normalize(t.text) === normalize(text))) s.transcript.push({ role, text, day: s.topicPlan[s.currentTopicIndex]?.day });
+  for (const item of history.slice(-MAX_HISTORY_ITEMS)) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as { sender?: unknown; text?: unknown };
+    const role = row.sender === 'candidate' ? 'candidate' : row.sender === 'interviewer' ? 'interviewer' : null;
+    if (!role || typeof row.text !== 'string') continue;
+    const text = row.text.trim().slice(0, MAX_TEXT_LENGTH);
+    if (!text) continue;
+    if (role === 'interviewer') {
+      s.transcript.push({ role, text, day: s.topicPlan[Math.min(s.questionCount, Math.max(0, s.topicPlan.length - 1))]?.day });
+    } else {
+      const candidateIndex = s.questionCount;
+      const topic = s.topicPlan[Math.min(candidateIndex, Math.max(0, s.topicPlan.length - 1))];
+      s.transcript.push({ role, text, day: topic?.day });
+      if (topic) { s.coveredDays.add(topic.day); score(s, topic, text); }
+      s.questionCount += 1;
+    }
   }
-  s.questionCount = s.transcript.filter(t => t.role === 'candidate').length;
-  s.currentTopicIndex = Math.min(Math.floor(s.questionCount / 3), Math.max(0, s.topicPlan.length - 1));
-  if (s.questionCount && s.topicPlan[s.currentTopicIndex]) s.coveredDays.add(s.topicPlan[s.currentTopicIndex].day);
+  s.currentTopicIndex = Math.min(s.questionCount, Math.max(0, s.topicPlan.length - 1));
 }
 
-// Question generation is deliberately deterministic. Claude was producing a valid but
-// repeatedly similar Pydantic/copay prompt in production, so the interview flow now uses
-// controlled scenarios while Claude remains available for final evidence-based feedback.
 function makeQuestion(s: Session, first: boolean, action: string): string {
   const scenarios = [
     'A member asks why a prior authorization was denied, but two source documents disagree. How would you trace the answer from retrieval through the member-facing response?',
@@ -96,7 +145,7 @@ function makeQuestion(s: Session, first: boolean, action: string): string {
     'An eligibility service starts returning stale data during a high-volume support window. How should the chatbot detect the problem and communicate uncertainty safely?',
     'A tool call used to calculate a member cost estimate arrives without one required field. How should the system validate the payload, recover, and prevent an unsafe answer?',
     'Two policy documents conflict on the same benefit. How would you design the system so the chatbot does not silently choose the wrong rule?',
-    'A production incident shows that technically correct retrieval is still producing confusing member answers. What observability and evaluation signals would you add?'
+    'A production incident shows that technically correct retrieval is still producing confusing member answers. What observability and evaluation signals would you add?',
   ];
   const index = Math.min(Math.max(0, s.questionCount), scenarios.length - 1);
   let q = scenarios[index];
@@ -104,8 +153,7 @@ function makeQuestion(s: Session, first: boolean, action: string): string {
   else if (action === 'perturb') q += ' Now assume the system must respond within two seconds while the policy corpus doubles. What changes?';
   else if (action === 'escalate') q += ' Now add an audit requirement and conflicting plan rules. What trade-off would you make?';
   else if (action === 'pivot') q += ' Separately, how would you test this failure mode before shipping the change?';
-  if (first) q = `Welcome ${s.candidate.name.split(' ')[0]}, let’s begin your technical evaluation. ${q}`;
-  return q;
+  return first ? `Welcome ${s.candidate.name.split(' ')[0]}, let’s begin your technical evaluation. ${q}` : q;
 }
 
 function score(s: Session, topic: CurriculumDay, answer: string) {
@@ -120,13 +168,25 @@ function score(s: Session, topic: CurriculumDay, answer: string) {
 async function makeFeedback(s: Session): Promise<FeedbackData> {
   if (anthropic) {
     try {
-      const r = await anthropic.messages.create({ model: MODEL, max_tokens: 450, temperature: 0.2, messages: [{ role: 'user', content: `Evaluate this technical interview using only transcript evidence. Return JSON with exactly summary, strengths, gaps, next. Candidate: ${s.candidate.name}, ${s.candidate.jobRole}. Transcript: ${JSON.stringify(s.transcript.slice(-16))}` }] });
+      const r = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 450,
+        temperature: 0.2,
+        messages: [{ role: 'user', content: `Evaluate this technical interview using only transcript evidence. Return JSON with exactly summary, strengths, gaps, next. Candidate: ${s.candidate.name}, ${s.candidate.jobRole}. Transcript: ${JSON.stringify(s.transcript.slice(-16))}` }],
+      });
       const raw = r.content[0]?.type === 'text' ? r.content[0].text.trim().replace(/^```json\s*/i, '').replace(/```$/i, '') : '';
       const parsed = JSON.parse(raw) as FeedbackData;
       if (parsed.summary && Array.isArray(parsed.strengths) && Array.isArray(parsed.gaps) && Array.isArray(parsed.next)) return parsed;
-    } catch (e) { console.warn('Claude feedback failed; deterministic feedback used.', e); }
+    } catch (error) { console.warn('Claude feedback failed; deterministic feedback used.', error); }
   }
-  return { summary: `The interview assessed production-oriented healthcare chatbot reasoning across ${s.coveredDays.size} curriculum areas.`, strengths: ['Engaged with production-oriented scenarios', 'Provided observable technical reasoning'], gaps: ['Some advanced trade-offs need deeper explanation', 'Continue strengthening failure-mode analysis'], next: ['Practice architecture decisions with measurable evidence', 'Rehearse failure recovery, observability, and validation'] };
+  return {
+    summary: `The interview assessed production-oriented healthcare chatbot reasoning across ${s.coveredDays.size} curriculum areas.`,
+    strengths: ['Engaged with production-oriented scenarios', 'Provided observable technical reasoning'],
+    gaps: ['Some advanced trade-offs need deeper explanation', 'Continue strengthening failure-mode analysis'],
+    next: ['Practice architecture decisions with measurable evidence', 'Rehearse failure recovery, observability, and validation'],
+  };
 }
 
-function chart(s: Session): SkillScore[] { return Object.entries(s.scores).map(([day, x]) => ({ topic: x.topic, day: Number(day), depthScore: Math.round(x.totalScore / x.count) })); }
+function chart(s: Session): SkillScore[] {
+  return Object.entries(s.scores).map(([day, x]) => ({ topic: x.topic, day: Number(day), depthScore: Math.round(x.totalScore / x.count) }));
+}
