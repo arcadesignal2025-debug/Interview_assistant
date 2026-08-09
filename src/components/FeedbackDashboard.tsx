@@ -74,9 +74,22 @@ export const FeedbackDashboard: React.FC<FeedbackDashboardProps> = ({ candidate,
 
         {skillChart && skillChart.length > 0 && (
           <div className="glass-card rounded-2xl p-6 border border-white/10">
-            <div className="flex items-center justify-between gap-3 mb-1"><h4 className="text-sm font-semibold text-white flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Domain Technical Depth Breakdown</h4><span className="text-[10px] uppercase tracking-wide text-gray-500">Assessed domains only</span></div>
-            <p className="text-xs text-gray-500 mb-4">Only domains reached by the interview are shown. A low score means limited demonstrated evidence, not a definitive measure of ability.</p>
-            <div className="space-y-4">{skillChart.map((skill, idx) => { const insufficient = skill.depthScore < 40; return <div key={`${skill.day}-${idx}`} className="space-y-1.5"><div className="flex justify-between text-xs font-medium"><span className="text-gray-300"><span className="font-mono text-gray-500 mr-2">Day {skill.day}</span>{skill.topic}</span><span className={`font-mono font-bold ${insufficient ? 'text-amber-300' : 'text-violet-light'}`}>{skill.depthScore}/100{insufficient ? ' · insufficient evidence' : ''}</span></div><div className="w-full h-2 bg-black/50 rounded-full overflow-hidden p-0.5 border border-white/5"><div className="h-full bg-purple-gradient rounded-full transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, skill.depthScore))}%` }} /></div></div>; })}</div>
+            <div className="flex items-center justify-between gap-3 mb-1"><h4 className="text-sm font-semibold text-white flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Domain Technical Depth Breakdown</h4><span className="text-[10px] uppercase tracking-wide text-gray-500">Assessment evidence only</span></div>
+            <p className="text-xs text-gray-500 mb-4">Domains reached by the interview are listed here. A domain is scored only when there is enough technical evidence to support a meaningful proficiency estimate.</p>
+            <div className="space-y-4">{skillChart.map((skill, idx) => {
+              const insufficient = skill.depthScore < 40;
+              return <div key={`${skill.day}-${idx}`} className="space-y-1.5">
+                <div className="flex justify-between gap-4 text-xs font-medium">
+                  <span className="text-gray-300"><span className="font-mono text-gray-500 mr-2">Day {skill.day}</span>{skill.topic}</span>
+                  <span className={`font-mono font-bold whitespace-nowrap ${insufficient ? 'text-amber-300' : 'text-violet-light'}`}>{insufficient ? 'Not scored · insufficient evidence' : `${skill.depthScore}/100`}</span>
+                </div>
+                {insufficient ? (
+                  <div className="w-full h-2 bg-black/30 rounded-full border border-dashed border-amber-500/20" aria-label="Insufficient evidence; domain not scored" />
+                ) : (
+                  <div className="w-full h-2 bg-black/50 rounded-full overflow-hidden p-0.5 border border-white/5"><div className="h-full bg-purple-gradient rounded-full transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, skill.depthScore))}%` }} /></div>
+                )}
+              </div>;
+            })}</div>
           </div>
         )}
       </div>
