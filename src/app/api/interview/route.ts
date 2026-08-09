@@ -4,19 +4,37 @@ import curriculumData from '@/data/curriculum.json';
 import candidatesData from '@/data/candidates.json';
 import { Candidate, CurriculumDay, SkillScore, FeedbackData } from '@/types/interview';
 
-const BUILD_VERSION = 'adaptive-v9-production-hardened';
+const BUILD_VERSION = 'adaptive-v10-final-audit';
 const MAX_HISTORY_ITEMS = 40;
 const MAX_TEXT_LENGTH = 4000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 20;
 const requestBuckets = new Map<string, { startedAt: number; count: number }>();
 
-type Turn = { role: 'interviewer' | 'candidate'; text: string; day?: number; action?: string };
-type ScoreEntry = { totalScore: number; count: number; topic: string };
-type Session = { sessionId: string; candidate: Candidate; topicPlan: CurriculumDay[]; currentTopicIndex: number; questionCount: number; coveredDays: Set<number>; transcript: Turn[]; scores: Record<number, ScoreEntry> };
+const DEMO_CANDIDATE: Candidate = {
+  id: 'DEMO-001',
+  name: 'Competition Demo Candidate',
+  jobRole: 'AI Platform Engineer',
+  yearsExperience: 6,
+  education: 'M.S. Computer Science',
+  status: 'DEMO',
+  missions: [
+    { day: 7, title: 'Embeddings Explained', passed: true, attempts: 1 },
+    { day: 8, title: 'Vector Databases Overview', passed: true, attempts: 1 },
+    { day: 10, title: 'Retrieval & Matching Engine', passed: true, attempts: 1 },
+    { day: 16, title: 'Chatbot Backend & API Integration', passed: true, attempts: 1 },
+    { day: 22, title: 'Multi-Agent Orchestration', passed: true, attempts: 1 },
+    { day: 28, title: 'Docker & Kubernetes Deployment', passed: true, attempts: 1 },
+  ],
+  signals: { commitDays: 24, missionsCompleted: 6, missionsFirstTry: 6 },
+};
 
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+
+type Turn = { role: 'interviewer' | 'candidate'; text: string; day?: number; action?: string };
+type ScoreEntry = { totalScore: number; count: number; topic: string };
+type Session = { sessionId: string; candidate: Candidate; topicPlan: CurriculumDay[]; currentTopicIndex: number; questionCount: number; coveredDays: Set<number>; transcript: Turn[]; scores: Record<number, ScoreEntry> };
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,7 +46,11 @@ export async function POST(req: NextRequest) {
     if (typeof sessionId !== 'string' || sessionId.length < 8 || sessionId.length > 200) return NextResponse.json({ error: 'A valid sessionId is required.', buildVersion: BUILD_VERSION }, { status: 400 });
     if (action === 'terminate_violation') return NextResponse.json({ buildVersion: BUILD_VERSION, reply: 'Interview terminated due to extended focus-loss violation. Session locked.', done: true, terminated: true, terminationReason: 'Security & focus-loss proctoring timeout exceeded.', feedback: { summary: 'Interview terminated early due to extended focus-loss violation.', strengths: ['Initial engagement registered before termination'], gaps: ['Incomplete assessment due to security protocol violation'], next: ['Retake the technical interview in a distraction-free environment'] } });
 
-    const canonical = isCandidate(candidate) ? (candidatesData as Candidate[]).find(c => c.id === candidate.id) : null;
+    const canonical = isCandidate(candidate)
+      ? candidate.id === DEMO_CANDIDATE.id
+        ? DEMO_CANDIDATE
+        : (candidatesData as Candidate[]).find(c => c.id === candidate.id) || null
+      : null;
     if (!canonical) return NextResponse.json({ error: 'Unknown or invalid candidate profile.', buildVersion: BUILD_VERSION }, { status: 400 });
 
     const session = init(sessionId, canonical);
@@ -54,7 +76,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ buildVersion: BUILD_VERSION, reply: makeQuestion(session, false, actionTaken), done: false });
   } catch (error: unknown) {
     console.error('[interview]', BUILD_VERSION, error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error', buildVersion: BUILD_VERSION }, { status: 500 });
+    return NextResponse.json({ error: 'Interview service temporarily unavailable. Please retry the request.', buildVersion: BUILD_VERSION }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
   }
 }
 
