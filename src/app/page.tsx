@@ -21,7 +21,6 @@ export default function Home() {
   const [isTerminated, setIsTerminated] = useState<boolean>(false);
   const [terminationReason, setTerminationReason] = useState<string>('');
 
-  // 1. Start Interview Session
   const handleStartInterview = async (candidate: Candidate) => {
     setSelectedCandidate(candidate);
     const newSessionId = `session-${candidate.id}-${Date.now().toString(36)}`;
@@ -56,15 +55,14 @@ export default function Home() {
         ]);
       }
     } catch (err) {
-      console.error("Failed to initialize interview:", err);
+      console.error('Failed to initialize interview:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 2. Handle Turn Messages
   const handleSendMessage = async (text: string) => {
-    if (!sessionId || isLoading) return;
+    if (!sessionId || isLoading || !selectedCandidate) return;
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -72,6 +70,15 @@ export default function Home() {
       text,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
+
+    // Keep the server able to reconstruct the session if Vercel routes this request
+    // to a different serverless instance. `messages` is intentionally the history
+    // before the current answer; the API appends the current answer itself.
+    const historyForServer = messages.map(({ sender, text: messageText, timestamp }) => ({
+      sender,
+      text: messageText,
+      timestamp,
+    }));
 
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
@@ -82,7 +89,9 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId,
+          candidate: selectedCandidate,
           message: text,
+          history: historyForServer,
         }),
       });
 
@@ -106,17 +115,16 @@ export default function Home() {
         setView('feedback');
       }
     } catch (err) {
-      console.error("Failed to send message:", err);
+      console.error('Failed to send message:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 3. Proctoring Termination Callback
   const handleViolationTerminate = async () => {
     if (view !== 'interview' || !sessionId) return;
     setIsTerminated(true);
-    setTerminationReason("Interview terminated due to focus-loss violation exceeding grace period.");
+    setTerminationReason('Interview terminated due to focus-loss violation exceeding grace period.');
 
     try {
       const res = await fetch('/api/interview', {
@@ -131,13 +139,12 @@ export default function Home() {
       const data: InterviewAPIResponse = await res.json();
       if (data.feedback) setFinalFeedback(data.feedback);
     } catch (err) {
-      console.error("Termination API call error:", err);
+      console.error('Termination API call error:', err);
     }
 
     setView('feedback');
   };
 
-  // Setup Proctoring Integrity Hook
   const {
     hasLostFocus,
     timeLeft,
@@ -152,7 +159,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-dark-bg selection:bg-violet-deep selection:text-white">
-      {/* View Orchestrator */}
       {view === 'selector' && (
         <CandidateSelector onSelectCandidate={handleStartInterview} />
       )}
@@ -174,10 +180,10 @@ export default function Home() {
         <FeedbackDashboard
           candidate={selectedCandidate}
           feedback={finalFeedback || {
-            summary: "Candidate completed the interview evaluation session.",
-            strengths: ["Demonstrated practical AI engineering reasoning"],
-            gaps: ["Further depth needed in advanced orchestration"],
-            next: ["Continue practice on production deployment"]
+            summary: 'Candidate completed the interview evaluation session.',
+            strengths: ['Demonstrated practical AI engineering reasoning'],
+            gaps: ['Further depth needed in advanced orchestration'],
+            next: ['Continue practice on production deployment']
           }}
           skillChart={skillChart}
           terminated={isTerminated}
@@ -186,7 +192,6 @@ export default function Home() {
         />
       )}
 
-      {/* Proctoring Warning and Navigation Trap Modals */}
       <ProctorWarningModal
         hasLostFocus={hasLostFocus}
         timeLeft={timeLeft}
