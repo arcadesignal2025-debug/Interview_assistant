@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseProctoringOptions {
   active: boolean;
@@ -8,113 +8,105 @@ interface UseProctoringOptions {
   gracePeriodSeconds?: number;
 }
 
-export function useProctoring({
-  active,
-  onGracePeriodStart,
-  onGracePeriodEnd,
-  onViolationTerminate,
-  gracePeriodSeconds = 25,
-}: UseProctoringOptions) {
+export function useProctoring({ active, onGracePeriodStart, onGracePeriodEnd, onViolationTerminate, gracePeriodSeconds = 25 }: UseProctoringOptions) {
   const [hasLostFocus, setHasLostFocus] = useState(false);
   const [timeLeft, setTimeLeft] = useState(gracePeriodSeconds);
   const [backModalOpen, setBackModalOpen] = useState(false);
-  
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeRef = useRef(active);
-  activeRef.current = active;
+  const terminatedRef = useRef(false);
+  const callbacksRef = useRef({ onGracePeriodStart, onGracePeriodEnd, onViolationTerminate });
 
-  // Visibility and Blur Monitoring
+  activeRef.current = active;
+  callbacksRef.current = { onGracePeriodStart, onGracePeriodEnd, onViolationTerminate };
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     if (!active) {
+      terminatedRef.current = false;
+      clearTimer();
       setHasLostFocus(false);
       setTimeLeft(gracePeriodSeconds);
-      if (timerRef.current) clearInterval(timerRef.current);
+      setBackModalOpen(false);
       return;
     }
 
+    terminatedRef.current = false;
     const handleFocusLoss = () => {
-      if (!activeRef.current) return;
+      if (!activeRef.current || terminatedRef.current) return;
       setHasLostFocus(true);
-      if (onGracePeriodStart) onGracePeriodStart();
+      callbacksRef.current.onGracePeriodStart?.();
     };
 
     const handleFocusGain = () => {
-      // Focus regained - keep modal open briefly or clear if returned in time
+      if (!activeRef.current || terminatedRef.current) return;
+      clearTimer();
+      setHasLostFocus(false);
+      setTimeLeft(gracePeriodSeconds);
+      callbacksRef.current.onGracePeriodEnd?.();
     };
 
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        handleFocusLoss();
-      } else {
-        handleFocusGain();
-      }
+      if (document.hidden) handleFocusLoss();
+      else handleFocusGain();
     };
 
     window.addEventListener('blur', handleFocusLoss);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       window.removeEventListener('blur', handleFocusLoss);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [active, gracePeriodSeconds, onGracePeriodStart]);
+  }, [active, gracePeriodSeconds, clearTimer]);
 
-  // Grace Period Countdown Timer
   useEffect(() => {
-    if (hasLostFocus && active) {
-      setTimeLeft(gracePeriodSeconds);
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            if (onViolationTerminate) onViolationTerminate();
-            return 0;
+    clearTimer();
+    if (!active || !hasLostFocus || terminatedRef.current) return;
+
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearTimer();
+          if (!terminatedRef.current && activeRef.current) {
+            terminatedRef.current = true;
+            callbacksRef.current.onViolationTerminate?.();
           }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [hasLostFocus, active, gracePeriodSeconds, onViolationTerminate]);
+    return clearTimer;
+  }, [active, hasLostFocus, gracePeriodSeconds, clearTimer]);
 
-  const dismissWarning = () => {
+  const dismissWarning = useCallback(() => {
+    if (terminatedRef.current) return;
+    clearTimer();
     setHasLostFocus(false);
     setTimeLeft(gracePeriodSeconds);
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (onGracePeriodEnd) onGracePeriodEnd();
-  };
+    callbacksRef.current.onGracePeriodEnd?.();
+  }, [clearTimer, gracePeriodSeconds]);
 
-  // Browser Back Button Interception (History Trap)
   useEffect(() => {
     if (!active) return;
-
-    // Push dummy history entry
     window.history.pushState({ page: 'interview' }, '', window.location.href);
 
-    const handlePopState = (e: PopStateEvent) => {
-      if (activeRef.current) {
-        // Re-push state to trap user on page
-        window.history.pushState({ page: 'interview' }, '', window.location.href);
-        setBackModalOpen(true);
-      }
+    const handlePopState = () => {
+      if (!activeRef.current) return;
+      window.history.pushState({ page: 'interview' }, '', window.location.href);
+      setBackModalOpen(true);
     };
 
     window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
+    return () => window.removeEventListener('popstate', handlePopState);
   }, [active]);
 
-  return {
-    hasLostFocus,
-    timeLeft,
-    dismissWarning,
-    backModalOpen,
-    setBackModalOpen,
-  };
+  return { hasLostFocus, timeLeft, dismissWarning, backModalOpen, setBackModalOpen };
 }
