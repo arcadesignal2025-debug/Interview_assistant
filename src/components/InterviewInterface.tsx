@@ -1,0 +1,175 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Candidate, ChatMessage, InterviewAPIResponse } from '@/types/interview';
+import { Send, Shield, ShieldCheck, User, Bot, Sparkles, Loader2, StopCircle, ArrowLeft } from 'lucide-react';
+
+interface InterviewInterfaceProps {
+  candidate: Candidate;
+  sessionId: string;
+  messages: ChatMessage[];
+  isLoading: boolean;
+  onSendMessage: (messageText: string) => void;
+  onEndEarly: () => void;
+  onBackToSelection: () => void;
+  proctorActive: boolean;
+}
+
+export const InterviewInterface: React.FC<InterviewInterfaceProps> = ({
+  candidate,
+  sessionId,
+  messages,
+  isLoading,
+  onSendMessage,
+  onEndEarly,
+  onBackToSelection,
+  proctorActive,
+}) => {
+  const [inputText, setInputText] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputText.trim() || isLoading) return;
+    onSendMessage(inputText.trim());
+    setInputText('');
+  };
+
+  // Turn counter based on candidate replies
+  const candidateTurnCount = messages.filter(m => m.sender === 'candidate').length;
+
+  return (
+    <div className="min-h-screen bg-dark-bg text-gray-100 flex flex-col justify-between">
+      {/* Top Header Navigation */}
+      <header className="glass-panel border-b border-white/10 p-4 sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onBackToSelection}
+              className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-gray-400 hover:text-white transition-colors border border-white/5"
+              title="Return to Candidates"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-bold text-white">{candidate.name}</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 bg-violet-deep/20 text-violet-light border border-violet-deep/30 rounded-full">
+                  {candidate.jobRole}
+                </span>
+              </div>
+              <div className="text-[11px] text-gray-400 font-mono mt-0.5 flex items-center gap-2">
+                <span>Session ID: {sessionId.slice(0, 8)}...</span>
+                <span>•</span>
+                <span>Question Turn: {candidateTurnCount + 1}/8+</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Proctoring Status Pill */}
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 glass-card rounded-full border border-emerald-500/30 text-xs text-emerald-400 font-medium">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <span>Proctoring Active (Tamper-Evident)</span>
+            </div>
+
+            <button
+              onClick={onEndEarly}
+              className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5"
+            >
+              <StopCircle className="w-3.5 h-3.5" /> End Interview
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Conversation Body */}
+      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 overflow-y-auto space-y-4">
+        {messages.map((msg) => {
+          const isInterviewer = msg.sender === 'interviewer';
+
+          return (
+            <div
+              key={msg.id}
+              className={`flex items-start gap-3 animate-fade-in ${isInterviewer ? 'justify-start' : 'justify-end'}`}
+            >
+              {isInterviewer && (
+                <div className="w-8 h-8 rounded-xl bg-purple-gradient flex items-center justify-center text-white shrink-0 shadow-md shadow-violet-deep/20 mt-1">
+                  <Bot className="w-4 h-4" />
+                </div>
+              )}
+
+              <div
+                className={`max-w-[85%] sm:max-w-[78%] rounded-2xl p-4 text-sm leading-relaxed ${
+                  isInterviewer
+                    ? 'glass-card text-gray-100 border border-white/10 rounded-tl-sm'
+                    : 'bg-violet-deep text-white shadow-lg shadow-violet-deep/20 rounded-tr-sm'
+                }`}
+              >
+                <div className="flex items-center justify-between text-[10px] opacity-60 mb-1.5">
+                  <span className="font-semibold">{isInterviewer ? 'AI Technical Lead' : candidate.name}</span>
+                  <span>{msg.timestamp}</span>
+                </div>
+                <div className="whitespace-pre-wrap font-sans">{msg.text}</div>
+              </div>
+
+              {!isInterviewer && (
+                <div className="w-8 h-8 rounded-xl bg-dark-card border border-white/10 flex items-center justify-center text-gray-300 shrink-0 mt-1">
+                  <User className="w-4 h-4 text-violet-light" />
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Loading / Thinking State Indicator */}
+        {isLoading && (
+          <div className="flex items-center gap-3 text-xs text-gray-400 animate-fade-in">
+            <div className="w-8 h-8 rounded-xl bg-purple-gradient/30 flex items-center justify-center text-violet-light shrink-0">
+              <Loader2 className="w-4 h-4 animate-spin" />
+            </div>
+            <div className="glass-card px-4 py-2.5 rounded-2xl border border-white/5 flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-violet-accent animate-pulse" />
+              <span>AI Lead evaluating response & synthesizing adaptive scenario...</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </main>
+
+      {/* Bottom Input Console */}
+      <footer className="glass-panel border-t border-white/10 p-4 sticky bottom-0 z-30">
+        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto flex items-center gap-3">
+          <textarea
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
+            placeholder="Type your technical response here... (Press Enter to submit, Shift+Enter for newline)"
+            disabled={isLoading}
+            rows={2}
+            className="flex-1 bg-dark-surface border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-violet-accent focus:ring-1 focus:ring-violet-accent transition-all resize-none disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={isLoading || !inputText.trim()}
+            className="p-3 bg-purple-gradient text-white rounded-xl hover:opacity-90 transition-all shadow-lg shadow-violet-deep/20 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      </footer>
+    </div>
+  );
+};

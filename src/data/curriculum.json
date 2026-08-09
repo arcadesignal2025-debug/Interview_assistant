@@ -1,0 +1,622 @@
+[
+  {
+    "day": 1,
+    "module": 1,
+    "moduleTitle": "Environment & Tooling",
+    "title": "VS Code & Python Environment Setup",
+    "type": "SETUP",
+    "tools": ["VS Code", "Python", "Pylance", "Virtual Environment"],
+    "objectives": [
+      "Install VS Code and Python on your machine",
+      "Configure the Python extension and Pylance",
+      "Create and activate a project virtual environment (.venv)",
+      "Run and debug your first Python program inside VS Code",
+      "Verify the development environment is ready for the remaining course"
+    ],
+    "mechanism": "Local Python interpreter and virtual environment isolation",
+    "purpose": "Clean reproducible environment for local AI development",
+    "commonFailureModes": ["Mismatched Python versions", "Unactivated venv", "Global package pollution"],
+    "adjacentConcepts": ["Package management", "IDE debugging", "Virtual environments"],
+    "ahaMoment": "Environment isolation prevents dependency hell when building complex AI pipelines."
+  },
+  {
+    "day": 2,
+    "module": 1,
+    "moduleTitle": "Environment & Tooling",
+    "title": "Local LLM & AI Coding Assistant Setup",
+    "type": "SETUP",
+    "tools": ["Ollama", "Qwen2.5-Coder", "GitHub Copilot", "Cline"],
+    "objectives": [
+      "Install Ollama and download a local coding model",
+      "Verify the local model works through the Ollama CLI",
+      "Connect VS Code to the local model using GitHub Copilot or Cline",
+      "Generate code using the local AI assistant",
+      "Confirm the complete AI coding workflow works offline"
+    ],
+    "mechanism": "Local model inference via Ollama server API",
+    "purpose": "Private, latency-free offline code generation",
+    "commonFailureModes": ["VRAM overflow", "Slow CPU inference fallback", "Context window truncation"],
+    "adjacentConcepts": ["Quantization", "Context limits", "GPU acceleration"],
+    "ahaMoment": "Running local LLMs allows zero-cost rapid prototyping without privacy or API rate-limit concerns."
+  },
+  {
+    "day": 3,
+    "module": 1,
+    "moduleTitle": "Environment & Tooling",
+    "title": "First AI Project, React Frontend & GitHub",
+    "type": "BUILD",
+    "tools": ["Python", "Ollama", "FastAPI", "React", "Vite", "Git", "GitHub"],
+    "objectives": [
+      "Build a command-line chatbot powered by your local Ollama model",
+      "Scaffold a FastAPI backend with a health endpoint",
+      "Create a React application using Vite",
+      "Connect the React frontend with the FastAPI backend",
+      "Initialize Git, commit the project, and publish it to GitHub"
+    ],
+    "mechanism": "Client-server REST architecture connecting React UI to FastAPI to Ollama",
+    "purpose": "Full-stack foundation for AI-powered web applications",
+    "commonFailureModes": ["CORS errors", "Synchronous blocking calls in FastAPI endpoints", "Unhandled stream disconnections"],
+    "adjacentConcepts": ["Asynchronous I/O", "REST API contracts", "CORS headers", "State management"],
+    "ahaMoment": "Separating AI inference into FastAPI endpoints keeps frontends responsive and allows seamless backend swaps."
+  },
+  {
+    "day": 4,
+    "module": 2,
+    "moduleTitle": "Data Foundations",
+    "title": "Reading & Processing Structured Data",
+    "type": "BUILD",
+    "tools": ["Pandas", "SQLite", "SQL", "SQLAlchemy"],
+    "objectives": [
+      "Create synthetic healthcare plans and claims datasets",
+      "Load and clean structured CSV data using Pandas",
+      "Store the processed data in a SQLite database",
+      "Write SQL queries to answer common healthcare questions",
+      "Document reusable SQL queries for later chatbot integration"
+    ],
+    "mechanism": "Relational database storage and SQL query execution for structured healthcare data",
+    "purpose": "Structured data querying and analytics engine for healthcare claims and plan rules",
+    "commonFailureModes": ["SQL injection vulnerability", "Missing indexes on query parameters", "NULL handling errors in aggregate functions"],
+    "adjacentConcepts": ["Relational modeling", "Database indexing", "SQL joins", "Schema normalization"],
+    "ahaMoment": "Combining SQL queries with LLMs allows exact deterministic lookup of numbers and claim rules rather than fuzzy LLM hallucination."
+  },
+  {
+    "day": 5,
+    "module": 2,
+    "moduleTitle": "Data Foundations",
+    "title": "Reading & Processing Unstructured Data",
+    "type": "BUILD",
+    "tools": ["pdfplumber", "PyPDF", "python-docx", "Tesseract OCR", "BeautifulSoup", "Requests"],
+    "objectives": [
+      "Extract text from healthcare PDFs and Word documents",
+      "Perform OCR on scanned enrollment forms",
+      "Scrape useful content from a public healthcare webpage",
+      "Clean and normalize extracted text from multiple sources",
+      "Store the processed text files for knowledge-base creation"
+    ],
+    "mechanism": "Multimodal document parsing and text normalization pipeline",
+    "purpose": "Converting messy healthcare PDFs, scanned forms, and web pages into clean cleanable text stream",
+    "commonFailureModes": ["Table extraction misalignment in PDFs", "OCR noise on low-res scans", "Encoding errors on raw HTML"],
+    "adjacentConcepts": ["Optical Character Recognition", "Document layout analysis", "Regex sanitization"],
+    "ahaMoment": "Document parsing quality directly bottlenecks RAG accuracy—garbage text in means garbage context out."
+  },
+  {
+    "day": 6,
+    "module": 2,
+    "moduleTitle": "Data Foundations",
+    "title": "Building the Knowledge Base",
+    "type": "BUILD",
+    "tools": ["LangChain Text Splitters", "JSONL", "Python"],
+    "objectives": [
+      "Convert structured and unstructured healthcare data into a unified knowledge base",
+      "Split long documents into retrieval-friendly chunks",
+      "Attach metadata such as source, plan type, and document section to every chunk",
+      "Export all processed records into a knowledge_base.jsonl file",
+      "Validate chunk quality before using them for embeddings"
+    ],
+    "mechanism": "Semantic text splitting and rich metadata tagging into structured JSONL",
+    "purpose": "Preparing high-quality retrieval units for vector search",
+    "commonFailureModes": ["Truncating sentence mid-context with naive character splitters", "Losing document provenance metadata", "Inconsistent chunk sizing"],
+    "adjacentConcepts": ["Recursive character splitting", "Overlap strategy", "Metadata enrichment"],
+    "ahaMoment": "Chunk overlap and metadata retention preserve critical context boundaries that single vectors would otherwise lose."
+  },
+  {
+    "day": 7,
+    "module": 3,
+    "moduleTitle": "Embeddings & Vector Search",
+    "title": "Embeddings Explained",
+    "type": "AI_CORE",
+    "tools": ["Sentence Transformers", "OpenAI Embeddings", "Scikit-learn", "Matplotlib"],
+    "objectives": [
+      "Understand how text is converted into vector embeddings",
+      "Generate embeddings for every knowledge base chunk",
+      "Store embeddings alongside the original documents",
+      "Visualize embedding clusters using PCA",
+      "Analyze whether similar healthcare concepts cluster together"
+    ],
+    "mechanism": "High-dimensional dense vector space projection of semantic text",
+    "purpose": "Mapping semantic meaning to geometric distance for context matching",
+    "commonFailureModes": ["Dimensionality mismatch", "Out-of-vocabulary domain terms", "Poor embedding model choice for healthcare terminology"],
+    "adjacentConcepts": ["Cosine similarity", "Dot product", "Dimensionality reduction (PCA/t-SNE)"],
+    "ahaMoment": "Semantic similarity is spatial distance—related concepts cluster close together regardless of exact keyword overlap."
+  },
+  {
+    "day": 8,
+    "module": 3,
+    "moduleTitle": "Embeddings & Vector Search",
+    "title": "Vector Databases Overview",
+    "type": "BUILD",
+    "tools": ["ChromaDB", "Pinecone"],
+    "objectives": [
+      "Learn the role of vector databases in RAG applications",
+      "Set up a local Chroma vector database",
+      "Create a cloud-based Pinecone index for comparison",
+      "Compare local and managed vector database solutions",
+      "Select the most suitable database for the chatbot project"
+    ],
+    "mechanism": "Indexed vector storage and ANN (Approximate Nearest Neighbor) similarity search",
+    "purpose": "Fast sub-millisecond retrieval over millions of high-dimensional vectors",
+    "commonFailureModes": ["Index build overhead", "Memory leak on local Chroma instances", "Metadata filter index degradation"],
+    "adjacentConcepts": ["HNSW indexing", "IVF-Flat", "Metadata filtering", "Index persistence"],
+    "ahaMoment": "Vector databases enable instant semantic retrieval that standard SQL inverted indexes can never achieve."
+  },
+  {
+    "day": 9,
+    "module": 3,
+    "moduleTitle": "Embeddings & Vector Search",
+    "title": "Building & Populating the Vector Database",
+    "type": "BUILD",
+    "tools": ["ChromaDB", "Sentence Transformers"],
+    "objectives": [
+      "Load knowledge base embeddings into the vector database",
+      "Store documents together with metadata for filtering",
+      "Verify that every knowledge base chunk has been indexed",
+      "Test semantic search with healthcare-related questions",
+      "Evaluate retrieval quality and metadata filtering"
+    ],
+    "mechanism": "Batch insertion of vectors, documents, and payload metadata into indexed collections",
+    "purpose": "Deploying a queryable vector index for healthcare domain knowledge",
+    "commonFailureModes": ["ID duplication across ingestion batches", "Missing metadata payload keys", "Unindexed embedding fields"],
+    "adjacentConcepts": ["Batching strategies", "Collection schema management", "Vector indexing parameters"],
+    "ahaMoment": "Filtering vectors by metadata (e.g. plan_type='PPO') before similarity search drastically increases retrieval precision."
+  },
+  {
+    "day": 10,
+    "module": 3,
+    "moduleTitle": "Embeddings & Vector Search",
+    "title": "The Retrieval & Matching Engine",
+    "type": "SHIP_IT",
+    "tools": ["SQLite", "ChromaDB", "Python"],
+    "objectives": [
+      "Build a query router that decides between SQL, vector search, or hybrid retrieval",
+      "Implement structured data lookup for plans and claims",
+      "Implement semantic retrieval from the vector database",
+      "Merge and deduplicate results from multiple retrieval sources",
+      "Evaluate retrieval accuracy using a diverse set of healthcare questions"
+    ],
+    "mechanism": "Hybrid retrieval routing and reciprocal rank fusion across SQL and Vector DBs",
+    "purpose": "Universal matching engine handling both numerical relational queries and semantic medical text queries",
+    "commonFailureModes": ["Routing misclassification", "Poor score normalization when merging SQL and vector results"],
+    "adjacentConcepts": ["Hybrid search", "RRF (Reciprocal Rank Fusion)", "Query intent classification"],
+    "ahaMoment": "Combining SQL precision for hard numbers with Vector DB recall for fuzzy knowledge solves 99% of RAG failure modes."
+  },
+  {
+    "day": 11,
+    "module": 4,
+    "moduleTitle": "LLM Core, Prompting & Fine-Tuning",
+    "title": "RAG End-to-End & LLM API Basics",
+    "type": "BUILD",
+    "tools": ["OpenAI SDK", "Ollama", "Groq", "Python"],
+    "objectives": [
+      "Connect the retrieval engine to an LLM to build a complete RAG pipeline",
+      "Configure a local or hosted LLM provider using the OpenAI-compatible SDK",
+      "Create a grounded prompt that answers only from retrieved context",
+      "Generate answers using retrieved knowledge",
+      "Evaluate chatbot responses against the retrieval-only baseline"
+    ],
+    "mechanism": "Retrieval-augmented generation context injection into LLM prompt template",
+    "purpose": "Grounded factual generation without hallucination",
+    "commonFailureModes": ["Hallucinating facts outside retrieved context", "Context window overflow", "Ignoring strict system instructions"],
+    "adjacentConcepts": ["Context stuffing", "System prompts", "Temperature settings", "Factual grounding"],
+    "ahaMoment": "Forcing the LLM to act purely as an synthesizer of provided context turns a creative text generator into a reliable factual agent."
+  },
+  {
+    "day": 12,
+    "module": 4,
+    "moduleTitle": "LLM Core, Prompting & Fine-Tuning",
+    "title": "Prompt Engineering Fundamentals",
+    "type": "LEARN",
+    "tools": ["LLMs", "Prompt Templates"],
+    "objectives": [
+      "Understand zero-shot, few-shot, and chain-of-thought prompting",
+      "Design multiple system prompt variations for the chatbot",
+      "Compare prompts based on accuracy, compliance, and tone",
+      "Evaluate prompt performance using a fixed question set",
+      "Finalize the production-ready system prompt"
+    ],
+    "mechanism": "In-context learning instruction design and reasoning structure steering",
+    "purpose": "Optimizing model accuracy, compliance, and structured output adherence through natural language instructions",
+    "commonFailureModes": ["Prompt drift across model versions", "Over-constraining causing refuse-to-answer behavior", "Verbose outputs exceeding token budgets"],
+    "adjacentConcepts": ["Chain-of-Thought (CoT)", "Few-shot exemplars", "Role prompting", "Guardrails"],
+    "ahaMoment": "Adding a simple 'Step-by-step reasoning before final answer' prompt instruction reduces logic errors by over 50%."
+  },
+  {
+    "day": 13,
+    "module": 4,
+    "moduleTitle": "LLM Core, Prompting & Fine-Tuning",
+    "title": "Advanced Prompting: Function Calling & Structured Outputs",
+    "type": "BUILD",
+    "tools": ["OpenAI Function Calling", "Pydantic", "Python"],
+    "objectives": [
+      "Define tool schemas for healthcare-related chatbot functions",
+      "Implement LLM function calling with automatic tool execution",
+      "Validate structured outputs using Pydantic models",
+      "Log tool calls for debugging and auditing",
+      "Test different user queries to verify correct tool selection"
+    ],
+    "mechanism": "JSON schema representation of native functions exposed to LLM reasoning loop",
+    "purpose": "Enabling LLMs to execute external Python functions and return typed structured JSON",
+    "commonFailureModes": ["Schema validation error from invalid LLM parameter types", "Infinite tool execution loop", "Tool call arguments hallucination"],
+    "adjacentConcepts": ["JSON Schema", "Pydantic models", "Function dispatching", "Schema enforcement"],
+    "ahaMoment": "Constraining LLMs to emit strict JSON schemas transforms unpredictable text outputs into programmatic API integrations."
+  },
+  {
+    "day": 14,
+    "module": 4,
+    "moduleTitle": "LLM Core, Prompting & Fine-Tuning",
+    "title": "Fine-Tuning: Concepts & When to Use It",
+    "type": "LEARN",
+    "tools": ["JSONL", "OpenAI", "LoRA", "QLoRA"],
+    "objectives": [
+      "Understand when fine-tuning is more appropriate than prompting or RAG",
+      "Identify chatbot issues that fine-tuning can solve",
+      "Create a high-quality fine-tuning dataset",
+      "Validate and organize the dataset into training and test sets",
+      "Prepare the project for model fine-tuning"
+    ],
+    "mechanism": "Parameter weight updates on domain-specific input/output dataset pairs",
+    "purpose": "Customizing model tone, style, specialized jargon, or latent task behavior",
+    "commonFailureModes": ["Fine-tuning to memorize facts instead of using RAG", "Catastrophic forgetting of base model capabilities", "Dirty training data causing toxic outputs"],
+    "adjacentConcepts": ["Low-Rank Adaptation (LoRA)", "Quantization", "Training loss curves", "Dataset curation"],
+    "ahaMoment": "Use RAG for dynamic knowledge retrieval and fine-tuning for static style/format adaptation—never confuse the two!"
+  },
+  {
+    "day": 15,
+    "module": 4,
+    "moduleTitle": "LLM Core, Prompting & Fine-Tuning",
+    "title": "Fine-Tuning: Hands-On with LoRA & QLoRA",
+    "type": "SHIP_IT",
+    "tools": ["PEFT", "Transformers", "BitsAndBytes", "OpenAI Fine-Tuning", "LoRA"],
+    "objectives": [
+      "Train or fine-tune an LLM using LoRA or the OpenAI fine-tuning workflow",
+      "Load and evaluate the fine-tuned model",
+      "Compare the base model and fine-tuned model on unseen test cases",
+      "Measure improvements in tone, consistency, and response quality",
+      "Document whether fine-tuning provides measurable benefits for the chatbot"
+    ],
+    "mechanism": "Parameter-Efficient Fine-Tuning (PEFT) using low-rank matrices and 4-bit quantization (QLoRA)",
+    "purpose": "Resource-efficient model specialization on consumer hardware",
+    "commonFailureModes": ["Overfitting on small training sets", "Gradient exploding", "Adapter weight merge misalignment"],
+    "adjacentConcepts": ["PEFT", "LoRA rank & alpha hyper-parameters", "bitsandbytes quantization", "Evaluation loss"],
+    "ahaMoment": "QLoRA enables fine-tuning 7B+ parameter models on a single GPU with minimal memory overhead and zero degradation in reasoning."
+  },
+  {
+    "day": 16,
+    "module": 5,
+    "moduleTitle": "Chatbot Application Build",
+    "title": "Chatbot Backend & API Integration",
+    "type": "BUILD",
+    "tools": ["FastAPI", "SQLite", "Python"],
+    "objectives": [
+      "Create a /chat API endpoint for the healthcare chatbot",
+      "Integrate retrieval, function calling, and LLM response generation",
+      "Implement session-based conversation management",
+      "Build a conversation history endpoint",
+      "Test the complete backend API using Postman or cURL"
+    ],
+    "mechanism": "Stateful REST API endpoint orchestrating RAG, session context, and LLM calls",
+    "purpose": "Exposing unified conversational API backend for healthcare chat frontends",
+    "commonFailureModes": ["Memory bloat on long session histories", "Race conditions on concurrent API calls", "Thread locking in sync FastAPI handlers"],
+    "adjacentConcepts": ["Dependency injection", "Middleware", "Session storage", "Async route handlers"],
+    "ahaMoment": "Decoupling session state from the AI inference engine allows stateless horizontally scalable API servers."
+  },
+  {
+    "day": 17,
+    "module": 5,
+    "moduleTitle": "Chatbot Application Build",
+    "title": "Chatbot Frontend Development",
+    "type": "BUILD",
+    "tools": ["Streamlit", "Requests", "UUID"],
+    "objectives": [
+      "Build an interactive chat interface for the chatbot",
+      "Connect the frontend to the backend chat API",
+      "Maintain conversation history across user interactions",
+      "Add a healthcare plan selector and new conversation option",
+      "Validate end-to-end communication between frontend and backend"
+    ],
+    "mechanism": "Reactive UI components binding client input to backend API endpoints",
+    "purpose": "Providing responsive visual interface for user interaction with healthcare AI",
+    "commonFailureModes": ["Full page re-renders clearing state", "Unhandled connection timeouts", "UI freeze during backend processing"],
+    "adjacentConcepts": ["Reactive state management", "Session tokens", "Component re-rendering", "API polling"],
+    "ahaMoment": "Maintaining clean message state arrays in UI prevents duplicate message rendering and lost chat history."
+  },
+  {
+    "day": 18,
+    "module": 5,
+    "moduleTitle": "Chatbot Application Build",
+    "title": "Full-Stack Integration & Streaming Responses",
+    "type": "BUILD",
+    "tools": ["FastAPI", "StreamingResponse", "Server-Sent Events", "Streamlit"],
+    "objectives": [
+      "Implement real-time streaming responses from the LLM",
+      "Display generated tokens incrementally in the chat interface",
+      "Add loading indicators for a better user experience",
+      "Handle interrupted or failed streaming requests gracefully",
+      "Verify smooth end-to-end streaming between backend and frontend"
+    ],
+    "mechanism": "Server-Sent Events (SSE) and HTTP chunked transfer encoding streaming tokens from LLM to frontend UI",
+    "purpose": "Reducing time-to-first-token latency perception for users",
+    "commonFailureModes": ["Buffer accumulation delaying token arrival", "Connection drop unhandled state", "UTF-8 chunk splitting corruption"],
+    "adjacentConcepts": ["SSE protocol", "Async generators", "Chunked transfer encoding", "Client stream readers"],
+    "ahaMoment": "Streaming token delivery transforms perceived 5-second wait times into immediate responsive conversation."
+  },
+  {
+    "day": 19,
+    "module": 5,
+    "moduleTitle": "Chatbot Application Build",
+    "title": "Response Formatting & Rich Outputs",
+    "type": "SHIP_IT",
+    "tools": ["Pydantic", "Markdown", "Streamlit"],
+    "objectives": [
+      "Add citations to chatbot responses using retrieved knowledge",
+      "Create structured cards for claims and coverage summaries",
+      "Render Markdown content with tables, lists, and formatting",
+      "Validate structured outputs before displaying them",
+      "Improve chatbot readability and response trustworthiness"
+    ],
+    "mechanism": "Structured JSON payload rendering into dynamic UI widgets (tables, cards, badges, inline citations)",
+    "purpose": "Enhancing response readability, transparency, and clinical confidence",
+    "commonFailureModes": ["Invalid markdown rendering breaking card layout", "Broken citation links", "Mismatch between text content and card metrics"],
+    "adjacentConcepts": ["Markdown parsers", "Custom UI components", "Data visualization", "Output validation"],
+    "ahaMoment": "Inline citations back-linked directly to source documents turn speculative LLM answers into verifiable facts."
+  },
+  {
+    "day": 20,
+    "module": 5,
+    "moduleTitle": "Chatbot Application Build",
+    "title": "Conversation Memory & Context Management",
+    "type": "SHIP_IT",
+    "tools": ["SQLite", "FastAPI", "LLM", "Token Management"],
+    "objectives": [
+      "Persist conversation history across multiple user sessions",
+      "Build context-aware conversations using previous messages",
+      "Implement automatic conversation summarization for long chats",
+      "Manage token limits while preserving important context",
+      "Ensure the chatbot remembers user preferences throughout a conversation"
+    ],
+    "mechanism": "Sliding window message buffer with periodic LLM conversation summarization",
+    "purpose": "Maintaining long-term dialogue continuity without exceeding model context limits or exploding API costs",
+    "commonFailureModes": ["Context window overflow error on long chats", "Key user details lost in aggressive compression", "Token counter mismatch"],
+    "adjacentConcepts": ["Sliding window buffer", "Conversation summarization memory", "tiktoken counting", "Context window budgeting"],
+    "ahaMoment": "Summarizing early dialogue history while keeping the last N turns verbatim gives infinite conversation depth within fixed token budgets."
+  },
+  {
+    "day": 21,
+    "module": 6,
+    "moduleTitle": "Agentic AI & MCP",
+    "title": "Agentic Frameworks: LangChain Agents & Tool Use",
+    "type": "BUILD",
+    "tools": ["LangChain", "LangChain Agents", "ReAct", "Python"],
+    "objectives": [
+      "Convert function-calling workflows into a reasoning agent",
+      "Wrap chatbot capabilities as reusable LangChain tools",
+      "Build a ReAct agent capable of selecting the correct tool automatically",
+      "Analyze reasoning traces to understand agent decision making",
+      "Evaluate whether the agent chooses the right tools for healthcare queries"
+    ],
+    "mechanism": "ReAct (Reason + Act) cognitive loop dynamically planning, selecting tools, executing, and observing results",
+    "purpose": "Transitioning from rigid linear code pipelines to autonomous goal-directed decision making",
+    "commonFailureModes": ["Infinite ReAct tool execution loop", "Tool parameter parsing failure", "Hallucinated tool selection when tools have ambiguous descriptions"],
+    "adjacentConcepts": ["ReAct pattern", "Tool descriptions", "Agent memory", "Execution trace logging"],
+    "ahaMoment": "Writing precise tool docstrings is prompt engineering for agent tool selection—clear tool descriptions double agent accuracy."
+  },
+  {
+    "day": 22,
+    "module": 6,
+    "moduleTitle": "Agentic AI & MCP",
+    "title": "Multi-Agent Orchestration",
+    "type": "BUILD",
+    "tools": ["CrewAI", "LangGraph", "Python"],
+    "objectives": [
+      "Create specialized agents for different healthcare domains",
+      "Build a router agent that delegates requests to the correct specialist",
+      "Implement a complete multi-agent workflow",
+      "Compare multi-agent performance with a single-agent architecture",
+      "Identify scenarios where multiple agents provide measurable benefits"
+    ],
+    "mechanism": "Directed Acyclic Graph (DAG) state graph orchestrating communication between specialized agent personas",
+    "purpose": "Solving complex multi-domain healthcare queries through specialized expert collaboration",
+    "commonFailureModes": ["Infinite delegation loops between agents", "State duplication across graph nodes", "High latency accumulation from sequential agent calls"],
+    "adjacentConcepts": ["Graph state management", "Agent delegation", "Supervisor router pattern", "Parallel execution"],
+    "ahaMoment": "Specializing agents with restricted tools and distinct system prompts performs better than one bloated super-agent trying to do everything."
+  },
+  {
+    "day": 23,
+    "module": 6,
+    "moduleTitle": "Agentic AI & MCP",
+    "title": "Model Context Protocol (MCP)",
+    "type": "BUILD",
+    "tools": ["MCP Python SDK", "Claude Desktop", "Cline", "Python"],
+    "objectives": [
+      "Understand the purpose of the Model Context Protocol",
+      "Build an MCP server exposing healthcare chatbot tools",
+      "Connect the MCP server to an MCP-compatible client",
+      "Expose multiple chatbot capabilities through standardized MCP tools",
+      "Verify successful tool execution through live MCP interactions"
+    ],
+    "mechanism": "Open standard protocol (JSON-RPC over stdio/SSE) connecting AI models to client-side tools and data sources",
+    "purpose": "Universal standardized integration layer between AI assistants and local/remote healthcare tools without custom wrapper code",
+    "commonFailureModes": ["Stdio stream logging corruption", "JSON-RPC protocol schema mismatch", "Connection handshake failure"],
+    "adjacentConcepts": ["Model Context Protocol", "JSON-RPC 2.0", "stdio transport", "SSE transport", "MCP tools/resources"],
+    "ahaMoment": "MCP decouples tool creation from client applications—build an MCP healthcare server once, connect to Claude, VS Code, or web frontends instantly."
+  },
+  {
+    "day": 24,
+    "module": 6,
+    "moduleTitle": "Agentic AI & MCP",
+    "title": "Agentic Chatbot Integration",
+    "type": "SHIP_IT",
+    "tools": ["LangChain", "MCP", "FastAPI", "Python"],
+    "objectives": [
+      "Integrate agents, MCP tools, retrieval, and conversation memory",
+      "Replace mock tools with live MCP-powered tool calls",
+      "Implement retries, timeouts, and graceful error handling",
+      "Perform failure testing to validate chatbot reliability",
+      "Build a production-style agentic chatbot pipeline"
+    ],
+    "mechanism": "Production-grade enterprise agent pipeline combining MCP protocol, stateful memory, and resilient error recovery handlers",
+    "purpose": "Hardening agentic AI systems for real-world production reliability",
+    "commonFailureModes": ["Cascade failures when downstream MCP tool times out", "Unhandled exception crashing agent loop", "Unretried rate limits"],
+    "adjacentConcepts": ["Circuit breakers", "Retry exponential backoff", "Timeout handling", "Fallback strategies"],
+    "ahaMoment": "Building robust fallback handlers for failed tool calls makes agentic systems resilient enough for mission-critical enterprise use."
+  },
+  {
+    "day": 25,
+    "module": 7,
+    "moduleTitle": "Evaluation, Security & Deployment",
+    "title": "Chatbot Evaluation & Testing",
+    "type": "SHIP_IT",
+    "tools": ["Python", "Evaluation Dataset", "Automated Testing"],
+    "objectives": [
+      "Create a benchmark dataset covering representative healthcare questions",
+      "Evaluate chatbot responses for accuracy, grounding, and consistency",
+      "Measure retrieval quality and end-to-end response performance",
+      "Identify common failure cases and document improvement areas",
+      "Establish baseline metrics before production deployment"
+    ],
+    "mechanism": "LLM-as-a-judge automated benchmarking testing factual accuracy, grounding recall, and hallucinations",
+    "purpose": "Continuous quality control and objective regression testing for AI pipelines",
+    "commonFailureModes": ["Evaluator bias", "Non-deterministic test score variance", "Benchmark dataset leakage into training/prompt exemplars"],
+    "adjacentConcepts": ["LLM-as-a-Judge", "RAG triad metrics", "Assertion testing"],
+    "ahaMoment": "Systematic automated benchmark evaluation is the only way to safely make prompt or model changes without introducing silent regressions."
+  },
+  {
+    "day": 26,
+    "module": 7,
+    "moduleTitle": "Evaluation, Security & Deployment",
+    "title": "Performance Optimization & Cost Management",
+    "type": "OPTIMIZE",
+    "tools": ["tiktoken", "Python", "FastAPI"],
+    "objectives": [
+      "Measure token usage across the chatbot pipeline",
+      "Optimize retrieval and prompt size to reduce latency and cost",
+      "Implement response caching for repeated queries",
+      "Benchmark response time before and after optimization",
+      "Document performance improvements using measurable metrics"
+    ],
+    "mechanism": "Prompt token trimming, semantic caching, and token budget management",
+    "purpose": "Reducing API expenditure and latency while keeping answer quality high",
+    "commonFailureModes": ["Cache invalidation failures", "Semantic cache false positive matches returning wrong answers", "Over-truncating critical prompt context"],
+    "adjacentConcepts": ["Token counting", "Semantic caching", "Prompt pruning", "Response time benchmarking"],
+    "ahaMoment": "Caching common queries reduces LLM API costs by up to 40% with 0ms latency."
+  },
+  {
+    "day": 27,
+    "module": 7,
+    "moduleTitle": "Evaluation, Security & Deployment",
+    "title": "Security, Privacy & Guardrails",
+    "type": "BUILD",
+    "tools": ["FastAPI", "Python", "Authentication", "Input Validation"],
+    "objectives": [
+      "Secure chatbot APIs against unauthorized access",
+      "Validate and sanitize user inputs before processing",
+      "Protect sensitive healthcare information throughout the pipeline",
+      "Implement prompt-injection and jailbreak safeguards",
+      "Test common security scenarios and document mitigation strategies"
+    ],
+    "mechanism": "Input sanitization filters, PII/PHI anonymization regex, and prompt injection classifier guardrails",
+    "purpose": "Preventing data breaches, HIPAA violations, prompt injection exploits, and model jailbreaks",
+    "commonFailureModes": ["System prompt leakage via indirect prompt injection", "PII leak in logging outputs", "Bypassing input validation via unicode encoding tricks"],
+    "adjacentConcepts": ["System prompt protection", "PII/PHI masking", "Input sanitization", "API rate limiting", "CORS configuration"],
+    "ahaMoment": "Security must be enforced in code wrappers outside the LLM—never rely solely on system prompt instructions for security boundaries!"
+  },
+  {
+    "day": 28,
+    "module": 7,
+    "moduleTitle": "Evaluation, Security & Deployment",
+    "title": "Docker & Kubernetes Deployment",
+    "type": "SHIP_IT",
+    "tools": ["Docker", "Kubernetes", "FastAPI", "React"],
+    "objectives": [
+      "Containerize the chatbot backend and frontend using Docker",
+      "Deploy the application to a Kubernetes cluster",
+      "Configure health checks and environment variables",
+      "Verify the deployed chatbot functions correctly",
+      "Prepare the application for production hosting"
+    ],
+    "mechanism": "Multi-stage Docker container build and Kubernetes pod orchestration with ingress routing",
+    "purpose": "Cloud-native containerized deployment with auto-scaling and zero-downtime rolling updates",
+    "commonFailureModes": ["Missing environment variables in k8s secrets", "Liveness probe failure killing starting container", "Container image bloat"],
+    "adjacentConcepts": ["Multi-stage Dockerfiles", "Kubernetes manifests", "Environment secrets", "Container health probes"],
+    "ahaMoment": "Multi-stage Docker builds reduce container sizes from 2GB to 150MB, speeding up deployment rollouts tenfold."
+  },
+  {
+    "day": 29,
+    "module": 8,
+    "moduleTitle": "Production & Capstone",
+    "title": "Monitoring, Logging & Observability",
+    "type": "BUILD",
+    "tools": ["Python Logging", "Prometheus", "Grafana"],
+    "objectives": [
+      "Add structured logging throughout the chatbot pipeline",
+      "Monitor API performance and chatbot usage",
+      "Track failures, latency, and tool execution metrics",
+      "Build dashboards for production observability",
+      "Use monitoring insights to improve chatbot reliability"
+    ],
+    "mechanism": "OpenTelemetry structured logging and Prometheus metrics collection exposed on /metrics endpoint",
+    "purpose": "Real-time operational visibility into production AI system performance, cost, and error rates",
+    "commonFailureModes": ["High cardinality metrics exploding TSDB storage", "Missing log correlation IDs across async requests", "Unhandled error logging gaps"],
+    "adjacentConcepts": ["OpenTelemetry", "Prometheus metrics", "Correlation IDs", "Grafana dashboards"],
+    "ahaMoment": "Tracking latency histograms per pipeline step instantly reveals whether slowness comes from vector search, database queries, or LLM generation."
+  },
+  {
+    "day": 30,
+    "module": 8,
+    "moduleTitle": "Production & Capstone",
+    "title": "Production Readiness & Final Testing",
+    "type": "SHIP_IT",
+    "tools": ["FastAPI", "Docker", "Kubernetes", "Python"],
+    "objectives": [
+      "Perform complete end-to-end testing of the chatbot",
+      "Validate retrieval, agent workflows, and frontend integration",
+      "Fix production issues discovered during testing",
+      "Complete deployment and operational documentation",
+      "Prepare the chatbot for real-world production usage"
+    ],
+    "mechanism": "End-to-end smoke testing, chaos testing, and production config verification",
+    "purpose": "Final hardening and operational sign-off before capstone demonstration",
+    "commonFailureModes": ["Environment variable mismatch between staging and prod", "Unhandled timeout on heavy load", "Missing SSL certificates"],
+    "adjacentConcepts": ["Smoke testing", "Load testing", "Disaster recovery", "Runbooks"],
+    "ahaMoment": "Rigorous end-to-end testing under simulated production failure conditions ensures total peace of mind during live demos."
+  },
+  {
+    "day": 31,
+    "module": 8,
+    "moduleTitle": "Production & Capstone",
+    "title": "Capstone Project & Final Demo",
+    "type": "CAPSTONE",
+    "tools": ["FastAPI", "React", "LangChain", "MCP", "Docker", "Kubernetes"],
+    "objectives": [
+      "Demonstrate the complete enterprise healthcare chatbot",
+      "Showcase retrieval, RAG, agents, MCP, and conversation memory",
+      "Present the deployed application with production architecture",
+      "Evaluate the chatbot using real-world scenarios",
+      "Publish the final project with source code and documentation"
+    ],
+    "mechanism": "Integrated capstone demonstration of full 31-day AI engineering stack",
+    "purpose": "Showcasing end-to-end mastery of building, securing, and deploying enterprise-grade AI systems",
+    "commonFailureModes": ["Live demo failure due to unhandled API rate limit", "Failure to articulate architectural trade-offs", "Incomplete documentation"],
+    "adjacentConcepts": ["System architecture presentation", "Capstone documentation", "Code repository publishing"],
+    "ahaMoment": "Integrating all 31 days of knowledge into one cohesive healthcare chatbot proves complete mastery from data ingestion to production Kubernetes deployment."
+  }
+]
