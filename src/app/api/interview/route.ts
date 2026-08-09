@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import curriculumData from '@/data/curriculum.json';
 import { Candidate, CurriculumDay, SkillScore, FeedbackData } from '@/types/interview';
 
-const BUILD_VERSION = 'adaptive-v5-hardened';
+const BUILD_VERSION = 'adaptive-v6-evidence-scoring';
 const MAX_HISTORY_ITEMS = 40;
 const MAX_TEXT_LENGTH = 4000;
 
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { sessionId, candidate, message, action, history } = body as { sessionId?: unknown; candidate?: Candidate; message?: unknown; action?: unknown; history?: unknown };
     if (typeof sessionId !== 'string' || sessionId.length < 8 || sessionId.length > 200) return NextResponse.json({ error: 'A valid sessionId is required.', buildVersion: BUILD_VERSION }, { status: 400 });
-    if (action === 'terminate_violation') return NextResponse.json({ buildVersion: BUILD_VERSION, reply: 'Interview terminated due to extended focus-loss violation. Session locked.', done: true, terminated: true, terminationReason: 'Security & focus-loss proctoring timeout exceeded.', feedback: { summary: 'Interview session terminated early due to extended focus-loss violation.', strengths: ['Initial engagement registered before termination'], gaps: ['Incomplete assessment due to security protocol violation'], next: ['Retake the technical interview in a distraction-free environment'] } });
+    if (action === 'terminate_violation') return NextResponse.json({ buildVersion: BUILD_VERSION, reply: 'Interview terminated due to extended focus-loss violation. Session locked.', done: true, terminated: true, terminationReason: 'Security & focus-loss proctoring timeout exceeded.', feedback: { summary: 'Interview terminated early due to extended focus-loss violation.', strengths: ['Initial engagement registered before termination'], gaps: ['Incomplete assessment due to security protocol violation'], next: ['Retake the technical interview in a distraction-free environment'] } });
     if (!isCandidate(candidate)) return NextResponse.json({ error: 'A complete candidate profile is required.', buildVersion: BUILD_VERSION }, { status: 400 });
 
     const session = init(sessionId, candidate);
@@ -109,11 +109,41 @@ function makeQuestion(s: Session, first: boolean, action: string): string {
   return first ? `Welcome ${s.candidate.name.split(' ')[0]}, let’s begin your technical evaluation. ${q}` : q;
 }
 
+function normalize(text: string): string { return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function containsConcept(answer: string, concept: string): boolean {
+  const a = normalize(answer);
+  const c = normalize(concept);
+  if (!c || c.length < 3) return false;
+  return a.includes(c);
+}
+
+// Evidence-based rubric: short acknowledgements should score low, while technically
+// grounded answers earn points for the curriculum's objectives, mechanism, failure modes,
+// adjacent concepts, tools, and enough explanation to demonstrate reasoning.
 function score(s: Session, topic: CurriculumDay, answer: string) {
-  const n = answer.split(/\s+/).filter(Boolean).length;
-  let value = 55 + (n >= 8 ? 10 : 0) + (n >= 25 ? 10 : 0) + (n >= 60 ? 10 : 0);
-  value += topic.tools.filter(t => answer.toLowerCase().includes(t.toLowerCase())).length * 4;
-  value = Math.max(35, Math.min(98, value));
+  const words = answer.split(/\s+/).filter(Boolean);
+  const n = words.length;
+  const lower = answer.toLowerCase();
+
+  let value = 25;
+  value += Math.min(20, Math.floor(n / 5) * 2); // explanation depth, capped
+
+  const objectiveHits = topic.objectives.filter(x => containsConcept(answer, x)).length;
+  const failureHits = topic.commonFailureModes.filter(x => containsConcept(answer, x)).length;
+  const adjacentHits = topic.adjacentConcepts.filter(x => containsConcept(answer, x)).length;
+  const toolHits = topic.tools.filter(x => lower.includes(x.toLowerCase())).length;
+
+  value += Math.min(20, objectiveHits * 5);
+  value += Math.min(15, failureHits * 5);
+  value += Math.min(10, adjacentHits * 3);
+  value += Math.min(10, toolHits * 3);
+
+  // Reward explicit reasoning structure, not filler words.
+  if (/\b(because|therefore|so that|trade[- ]?off|first|then|finally|measure|monitor|validate|fallback|test|observe|audit)\b/i.test(answer)) value += 8;
+  if (n < 3) value = Math.min(value, 30);
+  else if (n < 8) value = Math.min(value, 45);
+
+  value = Math.max(0, Math.min(100, value));
   const old = s.scores[topic.day];
   s.scores[topic.day] = old ? { ...old, totalScore: old.totalScore + value, count: old.count + 1 } : { totalScore: value, count: 1, topic: topic.title };
 }
