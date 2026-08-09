@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { Candidate, ChatMessage, FeedbackData, InterviewAPIResponse, SkillScore } from '@/types/interview';
 import { InterviewInterface } from '@/components/InterviewInterface';
@@ -24,21 +24,9 @@ const DEMO_CANDIDATE: Candidate = {
   signals: { commitDays: 24, missionsCompleted: 6, missionsFirstTry: 6 },
 };
 
-const SAMPLE_ANSWERS = [
-  'I would validate the member and plan identifiers first, then trace retrieval metadata, source authority, version, and effective date before producing the member response.',
-  'I would reject ambiguous metadata, use a deterministic fallback path, and log the decision so the result can be audited and reproduced.',
-  'I would verify plan type, effective date, and member scope before allowing a retrieved policy passage into the answer context.',
-  'I would inspect latency by dependency, cache hit rate, retrieval timing, queue depth, and downstream saturation before scaling the bottleneck.',
-  'I would detect stale eligibility data with freshness checks and communicate uncertainty instead of guessing when the source cannot be trusted.',
-  'I would validate required tool fields with a strict schema, return a safe validation error, and prevent execution with incomplete data.',
-  'I would rank conflicting policy sources by authority, effective date, and scope, and require an explicit conflict state when the rules cannot be reconciled.',
-  'I would add tracing, retrieval precision metrics, answer evaluations, alerts, and audit logs so production failures are detectable and reproducible.',
-];
-
 const FALLBACK: FeedbackData = { summary: 'The demo interview did not complete.', strengths: [], gaps: ['Insufficient demo evidence was collected.'], next: ['Restart the demo and complete the technical scenarios.'] };
 
 export default function DemoPage() {
-  const [started, setStarted] = useState(false);
   const [view, setView] = useState<'intro' | 'interview' | 'feedback'>('intro');
   const [sessionId, setSessionId] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -55,14 +43,14 @@ export default function DemoPage() {
 
   const start = async () => {
     const id = `demo-${Date.now().toString(36)}`;
-    setSessionId(id); setStarted(true); setView('interview'); setIsLoading(true); setError('');
+    setSessionId(id); setView('interview'); setIsLoading(true); setError('');
     try {
       const res = await fetch('/api/interview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cache: 'no-store', body: JSON.stringify({ sessionId: id, candidate: DEMO_CANDIDATE }) });
       const data = await parseResponse(res);
       if (!data.reply) throw new Error('No opening question returned.');
       setMessages([{ id: 'interviewer-1', sender: 'interviewer', text: data.reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to start demo.'); setView('intro'); setStarted(false);
+      setError(e instanceof Error ? e.message : 'Unable to start demo.'); setView('intro');
     } finally { setIsLoading(false); }
   };
 
@@ -74,14 +62,12 @@ export default function DemoPage() {
     try {
       const res = await fetch('/api/interview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cache: 'no-store', body: JSON.stringify({ sessionId, candidate: DEMO_CANDIDATE, message: text, history }) });
       const data = await parseResponse(res);
-      if (data.reply) setMessages(prev => [...prev, { id: `interviewer-${Date.now()}`, sender: 'interviewer', text: data.reply!, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      if (data.reply) setMessages(prev => [...prev, { id: `interviewer-${Date.now()}`, sender: 'interviewer', text: data.reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
       if (data.done) { setFeedback(data.feedback || FALLBACK); setSkillChart(data.skillChart || []); setView('feedback'); }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to send response.');
     } finally { setIsLoading(false); }
   };
-
-  useEffect(() => { return () => setStarted(false); }, []);
 
   if (view === 'intro') return (
     <main className="min-h-screen bg-dark-bg text-gray-100 p-6 sm:p-10">
@@ -105,5 +91,5 @@ export default function DemoPage() {
     </>
   );
 
-  return <FeedbackDashboard candidate={DEMO_CANDIDATE} feedback={feedback || FALLBACK} skillChart={skillChart} onRestart={() => { setMessages([]); setSessionId(''); setFeedback(null); setSkillChart([]); setStarted(false); setView('intro'); }} />;
+  return <FeedbackDashboard candidate={DEMO_CANDIDATE} feedback={feedback || FALLBACK} skillChart={skillChart} onRestart={() => { setMessages([]); setSessionId(''); setFeedback(null); setSkillChart([]); setView('intro'); }} />;
 }
