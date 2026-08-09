@@ -9,7 +9,7 @@ import { ProctorWarningModal } from '@/components/ProctorWarningModal';
 import { useProctoring } from '@/lib/proctoring';
 
 type ViewMode = 'selector' | 'interview' | 'feedback';
-const BUILD_VERSION = 'ui-v5-hardened';
+const BUILD_VERSION = 'ui-v5.1-hardened';
 const FALLBACK_FEEDBACK: FeedbackData = { summary: 'The interview was not completed.', strengths: [], gaps: ['Insufficient interview evidence was collected.'], next: ['Restart the interview and complete all technical scenarios.'] };
 
 export default function Home() {
@@ -77,13 +77,15 @@ export default function Home() {
   };
 
   const { hasLostFocus, timeLeft, dismissWarning, backModalOpen, setBackModalOpen } = useProctoring({ active: view === 'interview', gracePeriodSeconds: 25, onViolationTerminate: handleViolationTerminate });
+  const requestLeaveInterview = () => setBackModalOpen(true);
+  const confirmLeaveInterview = () => { setBackModalOpen(false); setView('selector'); setMessages([]); setSessionId(''); setErrorMessage(''); };
 
   return <div className="min-h-screen bg-dark-bg selection:bg-violet-deep selection:text-white">
     {errorMessage && <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[60] max-w-xl w-[calc(100%-2rem)] rounded-xl border border-rose-500/30 bg-rose-950/90 px-4 py-3 text-xs text-rose-200 shadow-xl" role="alert">{errorMessage}</div>}
     {view === 'selector' && <CandidateSelector onSelectCandidate={handleStartInterview} />}
-    {view === 'interview' && selectedCandidate && <InterviewInterface candidate={selectedCandidate} sessionId={sessionId} messages={messages} isLoading={isLoading} onSendMessage={handleSendMessage} onEndEarly={handleEndEarly} onBackToSelection={() => { setView('selector'); setErrorMessage(''); }} proctorActive={true} />}
+    {view === 'interview' && selectedCandidate && <InterviewInterface candidate={selectedCandidate} sessionId={sessionId} messages={messages} isLoading={isLoading} onSendMessage={handleSendMessage} onEndEarly={handleEndEarly} onBackToSelection={requestLeaveInterview} proctorActive={true} />}
     {view === 'feedback' && selectedCandidate && <FeedbackDashboard candidate={selectedCandidate} feedback={finalFeedback || FALLBACK_FEEDBACK} skillChart={skillChart} terminated={isTerminated} endedEarly={endedEarly} terminationReason={terminationReason} onRestart={() => { setView('selector'); setMessages([]); setSessionId(''); setFinalFeedback(null); setSkillChart([]); setIsTerminated(false); setEndedEarly(false); setTerminationReason(''); setErrorMessage(''); }} />}
     {view === 'interview' && <div className="fixed bottom-2 left-2 z-50 rounded-md border border-white/10 bg-black/70 px-2 py-1 text-[9px] text-gray-400">{BUILD_VERSION}</div>}
-    <ProctorWarningModal hasLostFocus={hasLostFocus} timeLeft={timeLeft} onDismissWarning={dismissWarning} backModalOpen={backModalOpen} onConfirmBackLeave={() => { setBackModalOpen(false); setView('selector'); }} onCancelBackLeave={() => setBackModalOpen(false)} />
+    <ProctorWarningModal hasLostFocus={hasLostFocus} timeLeft={timeLeft} onDismissWarning={dismissWarning} backModalOpen={backModalOpen} onConfirmBackLeave={confirmLeaveInterview} onCancelBackLeave={() => setBackModalOpen(false)} />
   </div>;
 }
