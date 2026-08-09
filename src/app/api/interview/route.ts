@@ -30,9 +30,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { sessionId, candidate, message, action, history } = body;
 
-    if (!sessionId) {
-      return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
-    }
+    if (!sessionId) return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
 
     if (action === 'terminate_violation') {
       const session = sessionsStore.get(sessionId);
@@ -43,7 +41,7 @@ export async function POST(req: NextRequest) {
         terminated: true,
         terminationReason: 'Security & focus-loss proctoring timeout exceeded.',
         feedback: {
-          summary: 'Interview session terminated early due to extended tab/window focus loss.',
+          summary: 'Interview session terminated early due to extended focus-loss violation.',
           strengths: ['Initial engagement registered before termination'],
           gaps: ['Incomplete assessment due to security protocol violation'],
           next: ['Retake the technical interview in a distraction-free environment'],
@@ -51,43 +49,37 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // IMPORTANT: candidate may be sent on every client request, but that must NOT
-    // recreate the interview. Reuse the existing session whenever sessionId exists.
+    // candidate may be sent on every turn. A request with a message is always an answer turn,
+    // even if Vercel routed it to a fresh serverless instance and the in-memory session is gone.
     let session = sessionsStore.get(sessionId);
     if (!session && candidate) {
       session = initializeSession(sessionId, candidate);
       restoreClientHistory(session, history);
       sessionsStore.set(sessionId, session);
 
-      // If history already contains an interviewer message, the client is recovering
-      // a session after a serverless instance change; do not generate another first turn.
-      const existingInterviewer = session.transcript.find(t => t.role === 'interviewer');
-      if (existingInterviewer) {
-        return NextResponse.json({ reply: existingInterviewer.text, done: false, recovered: true });
+      const hasCurrentMessage = typeof message === 'string' && message.trim().length > 0;
+      if (!hasCurrentMessage) {
+        const existingInterviewer = session.transcript.find(t => t.role === 'interviewer');
+        if (existingInterviewer) return NextResponse.json({ reply: existingInterviewer.text, done: false, recovered: true });
+        const firstQuestion = await generateNextQuestion(session, true);
+        session.transcript.push({ role: 'interviewer', text: firstQuestion, day: session.topicPlan[0]?.day });
+        return NextResponse.json({ reply: firstQuestion, done: false });
       }
-
-      const firstQuestion = await generateNextQuestion(session, true);
-      session.transcript.push({ role: 'interviewer', text: firstQuestion, day: session.topicPlan[0]?.day });
-      return NextResponse.json({ reply: firstQuestion, done: false });
     }
 
-    if (!session) {
-      return NextResponse.json({ error: 'Session not found. Please start interview.' }, { status: 404 });
-    }
-    if (session.isComplete) {
-      return NextResponse.json({ reply: 'Interview completed.', done: true });
-    }
+    if (!session) return NextResponse.json({ error: 'Session not found. Please start interview.' }, { status: 404 });
+    if (session.isComplete) return NextResponse.json({ reply: 'Interview completed.', done: true });
 
     const candidateAnswer = typeof message === 'string' ? message.trim() : '';
-    if (!candidateAnswer) {
-      return NextResponse.json({ error: 'message is required for an interview turn' }, { status: 400 });
-    }
+    if (!candidateAnswer) return NextResponse.json({ error: 'message is required for an interview turn' }, { status: 400 });
 
-    // The client history is a recovery aid only. Prefer the server transcript when
-    // it already contains the current turn; otherwise restore missing history.
     if (Array.isArray(history) && session.transcript.length === 0) restoreClientHistory(session, history);
 
-    session.transcript.push({ role: 'candidate', text: candidateAnswer, day: session.topicPlan[session.currentTopicIndex]?.day });
+    // Avoid duplicating an answer if a retry reaches the same warm instance.
+    const lastCandidate = [...session.transcript].reverse().find(t => t.role === 'candidate');
+    if (!lastCandidate || fingerprint(lastCandidate.text) !== fingerprint(candidateAnswer)) {
+      session.transcript.push({ role: 'candidate', text: candidateAnswer, day: session.topicPlan[session.currentTopicIndex]?.day });
+    }
 
     const currentTopic = session.topicPlan[session.currentTopicIndex];
     if (currentTopic) {
@@ -96,7 +88,6 @@ export async function POST(req: NextRequest) {
     }
 
     session.questionCount += 1;
-
     const answerWords = candidateAnswer.split(/\s+/).filter(Boolean).length;
     const previousQuestion = [...session.transcript].reverse().find(t => t.role === 'interviewer')?.text || '';
     const actionTaken = chooseAction(session, answerWords);
@@ -105,30 +96,14 @@ export async function POST(req: NextRequest) {
       if (session.currentTopicIndex < session.topicPlan.length - 1) session.currentTopicIndex += 1;
     }
 
-    const distinctDaysCount = session.coveredDays.size;
-    if (session.questionCount >= 8 && distinctDaysCount >= 4) {
+    if (session.questionCount >= 8 && session.coveredDays.size >= 4) {
       session.isComplete = true;
       const feedback = await generateFinalFeedback(session);
-      return NextResponse.json({
-        reply: 'Interview completed. Thank you for walking through these technical scenarios with me.',
-        done: true,
-        feedback,
-        skillChart: buildSkillChart(session),
-      });
+      return NextResponse.json({ reply: 'Interview completed. Thank you for walking through these technical scenarios with me.', done: true, feedback, skillChart: buildSkillChart(session) });
     }
 
-    const nextQuestion = await generateNextQuestion(session, false, {
-      previousQuestion,
-      candidateAnswer,
-      actionTaken,
-    });
-    session.transcript.push({
-      role: 'interviewer',
-      text: nextQuestion,
-      day: session.topicPlan[session.currentTopicIndex]?.day,
-      action: actionTaken,
-    });
-
+    const nextQuestion = await generateNextQuestion(session, false, { previousQuestion, candidateAnswer, actionTaken });
+    session.transcript.push({ role: 'interviewer', text: nextQuestion, day: session.topicPlan[session.currentTopicIndex]?.day, action: actionTaken });
     return NextResponse.json({ reply: nextQuestion, done: false });
   } catch (error: any) {
     console.error('API Error in /api/interview:', error);
@@ -148,39 +123,20 @@ function restoreClientHistory(session: InterviewSession, history: any) {
     session.transcript.push({ role, text, day: role === 'interviewer' ? session.topicPlan[session.currentTopicIndex]?.day : undefined });
     if (role === 'interviewer') session.fingerprints.add(fingerprint(text));
   }
-  const candidateTurns = session.transcript.filter(t => t.role === 'candidate').length;
-  session.questionCount = candidateTurns;
-  if (candidateTurns > 0) session.coveredDays.add(session.topicPlan[session.currentTopicIndex]?.day ?? session.topicPlan[0]?.day);
+  session.questionCount = session.transcript.filter(t => t.role === 'candidate').length;
+  const currentDay = session.topicPlan[session.currentTopicIndex]?.day ?? session.topicPlan[0]?.day;
+  if (currentDay && session.questionCount > 0) session.coveredDays.add(currentDay);
 }
 
 function initializeSession(sessionId: string, candidate: Candidate): InterviewSession {
-  const engagedDays = new Set(
-    candidate.missions
-      .filter(m => !m.skipped && ((m.attempts ?? 0) > 0 || m.passed === true))
-      .map(m => m.day)
-  );
-
+  const engagedDays = new Set(candidate.missions.filter(m => !m.skipped && ((m.attempts ?? 0) > 0 || m.passed === true)).map(m => m.day));
   const highValue = new Set(['BUILD', 'AI_CORE', 'SHIP_IT', 'CAPSTONE']);
   const availableDays = (curriculumData as CurriculumDay[]).filter(day => !day.type || highValue.has(day.type));
   const candidateDays = availableDays.filter(day => engagedDays.has(day.day));
   const source = candidateDays.length >= 5 ? candidateDays : availableDays;
   const seed = hashString(sessionId + candidate.id);
-  const topicPlan = [...source]
-    .sort((a, b) => pseudoRandom(seed + a.day) - pseudoRandom(seed + b.day))
-    .slice(0, 7);
-
-  return {
-    sessionId,
-    candidate,
-    topicPlan,
-    currentTopicIndex: 0,
-    questionCount: 0,
-    coveredDays: new Set<number>(),
-    fingerprints: new Set<string>(),
-    transcript: [],
-    scores: {},
-    isComplete: false,
-  };
+  const topicPlan = [...source].sort((a, b) => pseudoRandom(seed + a.day) - pseudoRandom(seed + b.day)).slice(0, 7);
+  return { sessionId, candidate, topicPlan, currentTopicIndex: 0, questionCount: 0, coveredDays: new Set<number>(), fingerprints: new Set<string>(), transcript: [], scores: {}, isComplete: false };
 }
 
 function chooseAction(session: InterviewSession, answerWords: number): 'escalate' | 'perturb' | 'probe' | 'pivot' {
@@ -200,10 +156,7 @@ function scoreAnswer(session: InterviewSession, topic: CurriculumDay, answer: st
   score += topic.tools.filter(t => lower.includes(t.toLowerCase())).length * 4;
   score = Math.min(98, Math.max(35, score));
   if (!session.scores[topic.day]) session.scores[topic.day] = { totalScore: score, count: 1, topic: topic.title };
-  else {
-    session.scores[topic.day].totalScore += score;
-    session.scores[topic.day].count += 1;
-  }
+  else { session.scores[topic.day].totalScore += score; session.scores[topic.day].count += 1; }
 }
 
 async function generateNextQuestion(session: InterviewSession, isFirst: boolean, turn?: { previousQuestion: string; candidateAnswer: string; actionTaken: string }): Promise<string> {
@@ -217,13 +170,8 @@ async function generateNextQuestion(session: InterviewSession, isFirst: boolean,
       const prompt = `You are the technical lead conducting a realistic adaptive interview for ${candidate.name}, a ${candidate.jobRole} with ${candidate.yearsExperience} years of experience.\n\nThe candidate built an enterprise healthcare chatbot. Current curriculum context is Day ${currentTopic.day}; use its objectives, mechanism and failure modes as hidden source material, but NEVER reveal the curriculum title or textbook concept name.\n\nObjectives: ${currentTopic.objectives.join('; ')}\nMechanism: ${currentTopic.mechanism}\nPurpose: ${currentTopic.purpose}\nFailure modes: ${currentTopic.commonFailureModes.join('; ')}\nAdjacent concepts: ${currentTopic.adjacentConcepts.join('; ')}\n\nInterview action: ${turn?.actionTaken || 'start'}\nPrevious question: ${turn?.previousQuestion || '(none)'}\nCandidate's latest answer: ${turn?.candidateAnswer || '(none)'}\nRecent transcript:\n${recentTranscript || '(none)'}\n\nRules:\n- Create a NEW healthcare-chatbot scenario. Never repeat the previous question or merely rephrase it.\n- Never name the curriculum concept/title in the question.\n- If action is probe: ask one focused clarifying question about the candidate's reasoning.\n- If action is perturb: change one concrete constraint such as scale, latency, noisy data, incorrect metadata, failure recovery, or conflicting requirements.\n- If action is escalate: require a deeper trade-off, causal explanation, or production decision.\n- If action is pivot: move to a distinct scenario while staying connected to the candidate's actual curriculum exposure.\n- Match implementation-detail expectations to the candidate's role and experience.\n- Keep it conversational and under 100 words. ${isFirst ? 'Start with one brief welcome sentence, then the scenario.' : 'Do not greet the candidate again.'}`;
       const response = await anthropic.messages.create({ model: CLAUDE_MODEL, max_tokens: 220, temperature: 0.8, messages: [{ role: 'user', content: prompt }] });
       const reply = response.content[0]?.type === 'text' ? response.content[0].text.trim() : '';
-      if (reply && !isDuplicate(session, reply)) {
-        session.fingerprints.add(fingerprint(reply));
-        return reply;
-      }
-    } catch (error) {
-      console.warn('Claude question generation failed; using deterministic fallback.', error);
-    }
+      if (reply && !isDuplicate(session, reply)) { session.fingerprints.add(fingerprint(reply)); return reply; }
+    } catch (error) { console.warn('Claude question generation failed; using deterministic fallback.', error); }
   }
 
   const fallback = fallbackScenarioSynthesizer(candidate, currentTopic, session.questionCount, isFirst, turn?.actionTaken || 'start');
@@ -272,9 +220,7 @@ function hashString(value: string): number {
 
 function pseudoRandom(seed: number): number {
   let x = seed || 1;
-  x ^= x << 13;
-  x ^= x >>> 17;
-  x ^= x << 5;
+  x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
   return (x >>> 0) / 4294967296;
 }
 
@@ -288,22 +234,13 @@ async function generateFinalFeedback(session: InterviewSession): Promise<Feedbac
       const jsonText = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
       const parsed = JSON.parse(jsonText) as FeedbackData;
       if (parsed.summary && Array.isArray(parsed.strengths) && Array.isArray(parsed.gaps) && Array.isArray(parsed.next)) return parsed;
-    } catch (error) {
-      console.warn('Claude feedback generation failed; using fallback feedback.', error);
-    }
+    } catch (error) { console.warn('Claude feedback generation failed; using deterministic feedback.', error); }
   }
-  return {
-    summary: `${candidate.name} completed an adaptive technical interview calibrated to their ${candidate.jobRole} background and the curriculum topics they engaged with.`,
-    strengths: ['Explained practical engineering decisions in a healthcare chatbot context.', 'Responded to production constraints and follow-up scenarios.', 'Connected implementation choices to reliability and user outcomes.'],
-    gaps: ['Add more concrete evidence and metrics when explaining production decisions.', 'Practice articulating failure recovery and trade-offs under changing constraints.'],
-    next: ['Revisit the weakest interview scenarios and explain the causal reasoning step by step.', 'Build one small production-style experiment that measures the relevant trade-offs.'],
-  };
+  const entries = Object.values(session.scores);
+  const average = entries.length ? Math.round(entries.reduce((sum, item) => sum + item.totalScore / item.count, 0) / entries.length) : 0;
+  return { summary: `The interview produced an evidence-based technical assessment across ${session.coveredDays.size} curriculum days, with an overall demonstrated score of ${average}%.`, strengths: ['Engaged with production-oriented healthcare chatbot scenarios', 'Provided observable technical reasoning during the interview'], gaps: ['Some advanced trade-offs require deeper explanation', 'Continue strengthening failure-mode analysis and operational validation'], next: ['Practice explaining architecture decisions with measurable evidence', 'Rehearse failure recovery, observability, and validation strategies'] };
 }
 
 function buildSkillChart(session: InterviewSession): SkillScore[] {
-  return session.topicPlan.slice(0, 5).map(topic => {
-    const data = session.scores[topic.day];
-    const depthScore = data ? Math.round(data.totalScore / data.count) : 0;
-    return { topic: topic.title, day: topic.day, depthScore };
-  });
+  return Object.values(session.scores).map(item => ({ skill: item.topic, score: Math.round(item.totalScore / item.count) }));
 }
