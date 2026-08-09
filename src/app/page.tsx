@@ -32,10 +32,9 @@ export default function Home() {
   };
 
   const handleStartInterview = async (candidate: Candidate) => {
-    setSelectedCandidate(candidate); setSessionId(`session-${candidate.id}-${Date.now().toString(36)}`); setMessages([]); setFinalFeedback(null); setSkillChart([]); setIsTerminated(false); setEndedEarly(false); setTerminationReason(''); setErrorMessage(''); setIsLoading(true); setView('interview');
+    const newSessionId = `session-${candidate.id}-${Date.now().toString(36)}`;
+    setSelectedCandidate(candidate); setSessionId(newSessionId); setMessages([]); setFinalFeedback(null); setSkillChart([]); setIsTerminated(false); setEndedEarly(false); setTerminationReason(''); setErrorMessage(''); setIsLoading(true); setView('interview');
     try {
-      const newSessionId = `session-${candidate.id}-${Date.now().toString(36)}`;
-      setSessionId(newSessionId);
       const res = await fetch('/api/interview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cache: 'no-store', body: JSON.stringify({ sessionId: newSessionId, candidate }) });
       const data = await parseResponse(res);
       console.info('Interview API build:', data.buildVersion);
@@ -56,7 +55,7 @@ export default function Home() {
       const res = await fetch('/api/interview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cache: 'no-store', body: JSON.stringify({ sessionId, candidate: selectedCandidate, message: text, history: historyForServer }) });
       const data = await parseResponse(res);
       console.info('Interview API build:', data.buildVersion);
-      if (data.reply) setMessages(prev => [...prev, { id: `interviewer-${Date.now()}`, sender: 'interviewer', text: data.reply as string, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      if (data.reply) setMessages(prev => [...prev, { id: `interviewer-${Date.now()}`, sender: 'interviewer', text: data.reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
       if (data.done) { setFinalFeedback(data.feedback || FALLBACK_FEEDBACK); setSkillChart(data.skillChart || []); setView('feedback'); }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to send response.';
