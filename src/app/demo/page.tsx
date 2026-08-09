@@ -47,8 +47,9 @@ export default function DemoPage() {
     try {
       const res = await fetch('/api/interview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cache: 'no-store', body: JSON.stringify({ sessionId: id, candidate: DEMO_CANDIDATE }) });
       const data = await parseResponse(res);
-      if (!data.reply) throw new Error('No opening question returned.');
-      setMessages([{ id: 'interviewer-1', sender: 'interviewer', text: data.reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      const reply = data.reply;
+      if (!reply) throw new Error('No opening question returned.');
+      setMessages([{ id: 'interviewer-1', sender: 'interviewer', text: reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to start demo.'); setView('intro');
     } finally { setIsLoading(false); }
@@ -62,7 +63,8 @@ export default function DemoPage() {
     try {
       const res = await fetch('/api/interview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cache: 'no-store', body: JSON.stringify({ sessionId, candidate: DEMO_CANDIDATE, message: text, history }) });
       const data = await parseResponse(res);
-      if (data.reply) setMessages(prev => [...prev, { id: `interviewer-${Date.now()}`, sender: 'interviewer', text: data.reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+      const reply = data.reply;
+      if (reply) setMessages(prev => [...prev, { id: `interviewer-${Date.now()}`, sender: 'interviewer', text: reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
       if (data.done) { setFeedback(data.feedback || FALLBACK); setSkillChart(data.skillChart || []); setView('feedback'); }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to send response.');
