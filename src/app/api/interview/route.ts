@@ -3,67 +3,73 @@ import Anthropic from '@anthropic-ai/sdk';
 import curriculumData from '@/data/curriculum.json';
 import { Candidate, CurriculumDay, SkillScore, FeedbackData } from '@/types/interview';
 
+const BUILD_VERSION = 'adaptive-v3-stateless';
 type Turn = { role: 'interviewer' | 'candidate'; text: string; day?: number; action?: string };
 type Session = { sessionId: string; candidate: Candidate; topicPlan: CurriculumDay[]; currentTopicIndex: number; questionCount: number; coveredDays: Set<number>; fingerprints: Set<string>; transcript: Turn[]; scores: Record<number, { totalScore: number; count: number; topic: string }>; isComplete: boolean };
 
-const store = (globalThis as typeof globalThis & { __interviewSessions?: Map<string, Session> }).__interviewSessions ?? new Map<string, Session>();
-(globalThis as typeof globalThis & { __interviewSessions?: Map<string, Session> }).__interviewSessions = store;
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 
 export async function POST(req: NextRequest) {
   try {
-    const { sessionId, candidate, message, action, history } = await req.json();
-    if (!sessionId) return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
+    const body = await req.json();
+    const { sessionId, candidate, message, action, history } = body;
+    if (!sessionId) return NextResponse.json({ error: 'sessionId is required', buildVersion: BUILD_VERSION }, { status: 400 });
 
     if (action === 'terminate_violation') {
-      const s = store.get(sessionId); if (s) s.isComplete = true;
-      return NextResponse.json({ reply: 'Interview terminated due to extended focus-loss violation. Session locked.', done: true, terminated: true, terminationReason: 'Security & focus-loss proctoring timeout exceeded.', feedback: { summary: 'Interview session terminated early due to extended focus-loss violation.', strengths: ['Initial engagement registered before termination'], gaps: ['Incomplete assessment due to security protocol violation'], next: ['Retake the technical interview in a distraction-free environment'] } });
+      return NextResponse.json({
+        buildVersion: BUILD_VERSION,
+        reply: 'Interview terminated due to extended focus-loss violation. Session locked.',
+        done: true,
+        terminated: true,
+        terminationReason: 'Security & focus-loss proctoring timeout exceeded.',
+        feedback: { summary: 'Interview session terminated early due to extended focus-loss violation.', strengths: ['Initial engagement registered before termination'], gaps: ['Incomplete assessment due to security protocol violation'], next: ['Retake the technical interview in a distraction-free environment'] }
+      });
     }
 
-    let session = store.get(sessionId);
-    if (!session && candidate) {
-      session = init(sessionId, candidate);
-      restore(session, history);
-      store.set(sessionId, session);
-      if (!hasText(message)) {
-        const q = await nextQuestion(session, true);
-        session.transcript.push({ role: 'interviewer', text: q, day: session.topicPlan[0]?.day });
-        return NextResponse.json({ reply: q, done: false });
-      }
-    }
-    if (!session) return NextResponse.json({ error: 'Session not found. Please start interview.' }, { status: 404 });
-    if (session.isComplete) return NextResponse.json({ reply: 'Interview completed.', done: true });
+    if (!candidate) return NextResponse.json({ error: 'candidate is required', buildVersion: BUILD_VERSION }, { status: 400 });
+
+    // IMPORTANT: Rebuild the session from the browser history on EVERY request.
+    // Vercel functions are stateless, so no in-memory session is trusted for continuity.
+    const session = init(sessionId, candidate);
+    restore(session, history);
 
     const answer = String(message || '').trim();
-    if (!answer) return NextResponse.json({ error: 'message is required for an interview turn' }, { status: 400 });
+    if (!answer) {
+      const q = await nextQuestion(session, true);
+      return NextResponse.json({ buildVersion: BUILD_VERSION, reply: q, done: false });
+    }
 
-    if (session.transcript.filter(t => t.role === 'candidate').length === 0 && Array.isArray(history)) restore(session, history);
+    // The history sent by the browser already contains the previous interviewer turns.
+    // Process the current answer exactly once.
     const lastCandidate = [...session.transcript].reverse().find(t => t.role === 'candidate');
-    if (!lastCandidate || fingerprint(lastCandidate.text) !== fingerprint(answer)) session.transcript.push({ role: 'candidate', text: answer, day: session.topicPlan[session.currentTopicIndex]?.day });
+    if (!lastCandidate || fingerprint(lastCandidate.text) !== fingerprint(answer)) {
+      session.transcript.push({ role: 'candidate', text: answer, day: session.topicPlan[session.currentTopicIndex]?.day });
+    }
 
+    session.questionCount = session.transcript.filter(t => t.role === 'candidate').length;
     const topic = session.topicPlan[session.currentTopicIndex] || session.topicPlan[0];
     if (topic) { session.coveredDays.add(topic.day); score(session, topic, answer); }
-    session.questionCount++;
-    const previous = [...session.transcript].reverse().find(t => t.role === 'interviewer')?.text || '';
-    const actionTaken = answer.split(/\s+/).filter(Boolean).length < 8 ? 'probe' : answer.split(/\s+/).filter(Boolean).length < 30 ? 'perturb' : session.questionCount % 3 === 0 ? 'pivot' : 'escalate';
-    if (actionTaken === 'pivot' && session.currentTopicIndex < session.topicPlan.length - 1) session.currentTopicIndex++;
+
+    const previous = [...session.transcript].reverse().find((t, i) => t.role === 'interviewer' && i > 0)?.text || [...session.transcript].reverse().find(t => t.role === 'interviewer')?.text || '';
+    const wordCount = answer.split(/\s+/).filter(Boolean).length;
+    const actionTaken = wordCount < 8 ? 'probe' : wordCount < 30 ? 'perturb' : session.questionCount % 3 === 0 ? 'pivot' : 'escalate';
+
+    // Advance the topic deterministically from the reconstructed turn count.
+    session.currentTopicIndex = Math.min(Math.floor(session.questionCount / 3), Math.max(0, session.topicPlan.length - 1));
 
     if (session.questionCount >= 8 && session.coveredDays.size >= 4) {
-      session.isComplete = true;
-      return NextResponse.json({ reply: 'Interview completed. Thank you for walking through these technical scenarios with me.', done: true, feedback: await feedback(session), skillChart: chart(session) });
+      return NextResponse.json({ buildVersion: BUILD_VERSION, reply: 'Interview completed. Thank you for walking through these technical scenarios with me.', done: true, feedback: await feedback(session), skillChart: chart(session) });
     }
 
     const q = await nextQuestion(session, false, { previous, answer, action: actionTaken });
-    session.transcript.push({ role: 'interviewer', text: q, day: session.topicPlan[session.currentTopicIndex]?.day, action: actionTaken });
-    return NextResponse.json({ reply: q, done: false });
+    return NextResponse.json({ buildVersion: BUILD_VERSION, reply: q, done: false });
   } catch (e: any) {
     console.error('/api/interview', e);
-    return NextResponse.json({ error: e?.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: e?.message || 'Internal Server Error', buildVersion: BUILD_VERSION }, { status: 500 });
   }
 }
 
-function hasText(v: unknown) { return typeof v === 'string' && v.trim().length > 0; }
 function fingerprint(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).slice(0, 32).join(' '); }
 function hash(s: string) { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; }
 function rand(seed: number) { let x = seed || 1; x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return (x >>> 0) / 4294967296; }
@@ -76,7 +82,7 @@ function init(sessionId: string, candidate: Candidate): Session {
   const source = personalized.length >= 5 ? personalized : days;
   const seed = hash(sessionId + candidate.id);
   const plan = [...source].sort((a, b) => rand(seed + a.day) - rand(seed + b.day)).slice(0, 7);
-  return { sessionId, candidate, topicPlan: plan, currentTopicIndex: 0, questionCount: 0, coveredDays: new Set(), fingerprints: new Set(), transcript: [], scores: {}, isComplete: false };
+  return { sessionId, candidate, topicPlan: plan, currentTopicIndex: 0, questionCount: 0, coveredDays: new Set<number>(), fingerprints: new Set<string>(), transcript: [], scores: {}, isComplete: false };
 }
 
 function restore(s: Session, history: any) {
@@ -90,7 +96,8 @@ function restore(s: Session, history: any) {
     if (role === 'interviewer') s.fingerprints.add(fingerprint(text));
   }
   s.questionCount = s.transcript.filter(t => t.role === 'candidate').length;
-  if (s.questionCount && s.topicPlan[0]) s.coveredDays.add(s.topicPlan[0].day);
+  s.currentTopicIndex = Math.min(Math.floor(s.questionCount / 3), Math.max(0, s.topicPlan.length - 1));
+  if (s.questionCount && s.topicPlan[s.currentTopicIndex]) s.coveredDays.add(s.topicPlan[s.currentTopicIndex].day);
 }
 
 function score(s: Session, topic: CurriculumDay, answer: string) {
@@ -100,11 +107,12 @@ function score(s: Session, topic: CurriculumDay, answer: string) {
 }
 
 async function nextQuestion(s: Session, first: boolean, turn?: { previous: string; answer: string; action: string }) {
-  const t = s.topicPlan[s.currentTopicIndex] || s.topicPlan[0]; if (!t) return 'Let’s continue with a production scenario relevant to your healthcare chatbot work.';
+  const t = s.topicPlan[s.currentTopicIndex] || s.topicPlan[0];
+  if (!t) return 'Let’s continue with a production scenario relevant to your healthcare chatbot work.';
   if (anthropic) {
     try {
       const recent = s.transcript.slice(-8).map(x => `${x.role}: ${x.text}`).join('\n');
-      const prompt = `Conduct an adaptive technical interview for ${s.candidate.name}, ${s.candidate.jobRole}, ${s.candidate.yearsExperience} years. The candidate built an enterprise healthcare chatbot. Use the following curriculum material as hidden context; never reveal its title or concept name. Day ${t.day}; objectives: ${t.objectives.join('; ')}; mechanism: ${t.mechanism}; failure modes: ${t.commonFailureModes.join('; ')}; adjacent concepts: ${t.adjacentConcepts.join('; ')}.\nAction: ${turn?.action || 'start'}\nPrevious question: ${turn?.previous || '(none)'}\nLatest answer: ${turn?.answer || '(none)'}\nRecent transcript:\n${recent || '(none)'}\nRules: create a genuinely NEW healthcare-chatbot scenario, never repeat or merely rephrase the previous question; probe means clarify reasoning, perturb means change one constraint, escalate means demand a deeper trade-off, pivot means a distinct scenario. Match role/experience. Under 100 words. ${first ? 'Briefly welcome the candidate.' : 'Do not greet again.'}`;
+      const prompt = `Conduct an adaptive technical interview for ${s.candidate.name}, ${s.candidate.jobRole}, ${s.candidate.yearsExperience} years. The candidate built an enterprise healthcare chatbot. Use this curriculum as hidden context and never reveal its title or concept name. Day ${t.day}; objectives: ${t.objectives.join('; ')}; mechanism: ${t.mechanism}; failure modes: ${t.commonFailureModes.join('; ')}; adjacent concepts: ${t.adjacentConcepts.join('; ')}.\nAction: ${turn?.action || 'start'}\nPrevious question: ${turn?.previous || '(none)'}\nLatest answer: ${turn?.answer || '(none)'}\nRecent transcript:\n${recent || '(none)'}\nRules: create a genuinely NEW healthcare-chatbot scenario. Never repeat or merely rephrase the previous question. Probe means clarify reasoning. Perturb means change one concrete constraint. Escalate means demand a deeper trade-off. Pivot means a distinct scenario. Match role/experience. Under 100 words. ${first ? 'Briefly welcome the candidate.' : 'Do not greet again.'}`;
       const r = await anthropic.messages.create({ model: MODEL, max_tokens: 220, temperature: 0.8, messages: [{ role: 'user', content: prompt }] });
       const text = r.content[0]?.type === 'text' ? r.content[0].text.trim() : '';
       if (text && !duplicate(s, text)) { s.fingerprints.add(fingerprint(text)); return text; }
@@ -113,7 +121,8 @@ async function nextQuestion(s: Session, first: boolean, turn?: { previous: strin
   const scenarios = ['a member asks why a prior authorization was denied and source documents disagree', 'a benefits question arrives with an incomplete plan identifier and ambiguous metadata', 'a retrieval result is relevant but belongs to the wrong plan type', 'an enrollment surge makes retrieval latency spike', 'an eligibility service returns stale data during a high-volume window', 'an LLM tool call omits a required field while calculating a cost estimate', 'two policy documents conflict and the chatbot must explain uncertainty without inventing an answer'];
   const scenario = scenarios[Math.min(s.questionCount, scenarios.length - 1)];
   const modifier: Record<string, string> = { probe: ' Walk me through the exact evidence you would use.', perturb: ' Now assume latency must stay below 2 seconds while the corpus doubles. What changes?', escalate: ' Now require conflicting plan rules and an audit trail. What trade-off would you make?', pivot: ' Separately, how would you detect and contain a wrong-plan retrieval result before it reaches the member?', start: '' };
-  const text = `${first ? `Welcome ${s.candidate.name.split(' ')[0]}, let’s begin. ` : ''}Imagine the healthcare chatbot is handling ${scenario}. What would you inspect first, and how would you design the system so the response stays reliable?${modifier[turn?.action || 'start'] || ''}`;
+  let text = `${first ? `Welcome ${s.candidate.name.split(' ')[0]}, let’s begin. ` : ''}Imagine the healthcare chatbot is handling ${scenario}. What would you inspect first, and how would you design the system so the response stays reliable?${modifier[turn?.action || 'start'] || ''}`;
+  if (duplicate(s, text)) text = `Consider a different production scenario: ${scenarios[(s.questionCount + 1) % scenarios.length]}. What would you change in the design to keep the member-facing answer reliable?`;
   s.fingerprints.add(fingerprint(text)); return text;
 }
 function duplicate(s: Session, text: string) { const f = fingerprint(text); return s.fingerprints.has(f) || s.transcript.some(x => x.role === 'interviewer' && fingerprint(x.text) === f); }
