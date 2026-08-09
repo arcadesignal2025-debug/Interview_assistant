@@ -1,10 +1,15 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'AI Technical Interview Agent | 31-Day AI Engineering Cohort',
   description: 'Adaptive, multi-turn AI technical interview agent for 31-day AI engineering cohort candidates.',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
