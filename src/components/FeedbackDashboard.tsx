@@ -1,6 +1,6 @@
 import React from 'react';
 import { Candidate, FeedbackData, SkillScore } from '@/types/interview';
-import { Award, CheckCircle, AlertCircle, ArrowRight, RotateCcw, ShieldCheck, BarChart3, ChevronRight } from 'lucide-react';
+import { Award, CheckCircle, AlertCircle, ArrowRight, RotateCcw, BarChart3, ChevronRight } from 'lucide-react';
 
 interface FeedbackDashboardProps {
   candidate: Candidate;
@@ -15,6 +15,7 @@ interface FeedbackDashboardProps {
 export const FeedbackDashboard: React.FC<FeedbackDashboardProps> = ({ candidate, feedback, skillChart, terminated, endedEarly, terminationReason, onRestart }) => {
   const statusLabel = terminated ? 'TERMINATED VIOLATION' : endedEarly ? 'ENDED EARLY' : 'EVALUATION COMPLETE';
   const statusClass = terminated ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' : endedEarly ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+  const hasInsufficientEvidence = feedback.summary.toLowerCase().includes('insufficient technical evidence');
 
   return (
     <div className="min-h-screen bg-dark-bg text-gray-100 p-4 sm:p-6 lg:p-8">
@@ -39,10 +40,14 @@ export const FeedbackDashboard: React.FC<FeedbackDashboardProps> = ({ candidate,
         {(terminated || endedEarly) && terminationReason && (
           <div className={`p-4 rounded-xl text-sm flex items-center gap-3 ${terminated ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300' : 'bg-amber-500/10 border border-amber-500/30 text-amber-300'}`}>
             <AlertCircle className={`w-5 h-5 shrink-0 ${terminated ? 'text-rose-400' : 'text-amber-400'}`} />
-            <div>
-              <div className="font-semibold">{terminated ? 'Security & Proctoring Notice' : 'Interview Status'}</div>
-              <div className="text-xs opacity-80">{terminationReason}</div>
-            </div>
+            <div><div className="font-semibold">{terminated ? 'Security & Proctoring Notice' : 'Interview Status'}</div><div className="text-xs opacity-80">{terminationReason}</div></div>
+          </div>
+        )}
+
+        {hasInsufficientEvidence && (
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
+            <div><div className="font-semibold text-sm">Assessment limited by response evidence</div><div className="text-xs text-amber-100/80 mt-1">The score reflects only what was demonstrated in the interview. Short or non-technical responses are not treated as evidence of technical ability.</div></div>
           </div>
         )}
 
@@ -69,8 +74,9 @@ export const FeedbackDashboard: React.FC<FeedbackDashboardProps> = ({ candidate,
 
         {skillChart && skillChart.length > 0 && (
           <div className="glass-card rounded-2xl p-6 border border-white/10">
-            <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Domain Technical Depth Breakdown</h4>
-            <div className="space-y-4">{skillChart.map((skill, idx) => <div key={`${skill.day}-${idx}`} className="space-y-1.5"><div className="flex justify-between text-xs font-medium"><span className="text-gray-300"><span className="font-mono text-gray-500 mr-2">Day {skill.day}</span>{skill.topic}</span><span className="font-mono font-bold text-violet-light">{skill.depthScore}/100</span></div><div className="w-full h-2 bg-black/50 rounded-full overflow-hidden p-0.5 border border-white/5"><div className="h-full bg-purple-gradient rounded-full transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, skill.depthScore))}%` }} /></div></div>)}</div>
+            <div className="flex items-center justify-between gap-3 mb-1"><h4 className="text-sm font-semibold text-white flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Domain Technical Depth Breakdown</h4><span className="text-[10px] uppercase tracking-wide text-gray-500">Assessed domains only</span></div>
+            <p className="text-xs text-gray-500 mb-4">Only domains reached by the interview are shown. A low score means limited demonstrated evidence, not a definitive measure of ability.</p>
+            <div className="space-y-4">{skillChart.map((skill, idx) => { const insufficient = skill.depthScore < 40; return <div key={`${skill.day}-${idx}`} className="space-y-1.5"><div className="flex justify-between text-xs font-medium"><span className="text-gray-300"><span className="font-mono text-gray-500 mr-2">Day {skill.day}</span>{skill.topic}</span><span className={`font-mono font-bold ${insufficient ? 'text-amber-300' : 'text-violet-light'}`}>{skill.depthScore}/100{insufficient ? ' · insufficient evidence' : ''}</span></div><div className="w-full h-2 bg-black/50 rounded-full overflow-hidden p-0.5 border border-white/5"><div className="h-full bg-purple-gradient rounded-full transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, skill.depthScore))}%` }} /></div></div>; })}</div>
           </div>
         )}
       </div>
