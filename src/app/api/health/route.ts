@@ -7,7 +7,7 @@ export async function GET() {
     {
       ok: true,
       service: 'interview-assistant',
-      buildVersion: 'adaptive-v5-hardened',
+      buildVersion: 'adaptive-v8-production-audit',
       anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
       timestamp: new Date().toISOString(),
     },

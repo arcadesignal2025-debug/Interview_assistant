@@ -9,7 +9,7 @@ import { ProctorWarningModal } from '@/components/ProctorWarningModal';
 import { useProctoring } from '@/lib/proctoring';
 
 type ViewMode = 'selector' | 'interview' | 'feedback';
-const BUILD_VERSION = 'ui-v5.1-hardened';
+const BUILD_VERSION = 'ui-v8-production-audit';
 const FALLBACK_FEEDBACK: FeedbackData = { summary: 'The interview was not completed.', strengths: [], gaps: ['Insufficient interview evidence was collected.'], next: ['Restart the interview and complete all technical scenarios.'] };
 
 export default function Home() {
@@ -50,7 +50,7 @@ export default function Home() {
   const handleSendMessage = async (text: string) => {
     if (!sessionId || isLoading || !selectedCandidate) return;
     const userMsg: ChatMessage = { id: `candidate-${Date.now()}`, sender: 'candidate', text, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-    const historyForServer = messages.map(({ sender, text: messageText, timestamp }) => ({ sender, text: messageText, timestamp }));
+    const historyForServer = [...messages, userMsg].map(({ sender, text: messageText, timestamp }) => ({ sender, text: messageText, timestamp }));
     setMessages(prev => [...prev, userMsg]); setIsLoading(true); setErrorMessage('');
     try {
       const res = await fetch('/api/interview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cache: 'no-store', body: JSON.stringify({ sessionId, candidate: selectedCandidate, message: text, history: historyForServer }) });
