@@ -1,6 +1,43 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('AI Technical Interview', () => {
+  test('public coordinator showcase contains no candidate selector and links to sanitized demo', async ({ page }) => {
+    await page.goto('/showcase');
+    await expect(page.getByText('COMPETITION SUBMISSION • PUBLIC DEMO')).toBeVisible();
+    await expect(page.getByText('Sanitized Interactive Demo', { exact: false })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Launch Sanitized Interactive Demo' })).toHaveAttribute('href', '/demo');
+    await expect(page.getByText('Sarah Johnson')).toHaveCount(0);
+    await expect(page.getByText('Alex Turner')).toHaveCount(0);
+  });
+
+  test('sanitized demo can start and complete without private candidate data', async ({ page }) => {
+    await page.goto('/demo');
+    await expect(page.getByText('SANITIZED INTERACTIVE DEMO')).toBeVisible();
+    await page.getByRole('button', { name: 'Start Interactive Demo' }).click();
+    await expect(page.getByTestId('answer-input')).toBeVisible();
+    await expect(page.getByText('Competition Demo Candidate')).toBeVisible();
+
+    const answers = [
+      'I would validate the plan and member identifiers first, then trace retrieval metadata and source authority.',
+      'I would reject ambiguous metadata, use a deterministic fallback, and log the decision for auditability.',
+      'I would verify plan type, effective date, and member scope before allowing a policy passage into context.',
+      'I would inspect latency by dependency, cache hit rate, queue depth, and downstream saturation before scaling.',
+      'I would detect stale eligibility data with freshness checks and communicate uncertainty rather than guessing.',
+      'I would validate required tool fields with a strict schema and prevent execution with incomplete data.',
+      'I would rank conflicting policy sources by authority and effective date and escalate unresolved conflicts.',
+      'I would add tracing, evaluation metrics, alerts, and audit logs so production failures are detectable.',
+    ];
+
+    for (const answer of answers) {
+      await page.getByTestId('answer-input').fill(answer);
+      await page.getByTestId('send-answer').click();
+      await expect(page.getByTestId('loading-indicator')).toHaveCount(0, { timeout: 15000 });
+    }
+
+    await expect(page.getByText('Domain Technical Depth Breakdown')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Competition Demo Candidate')).toBeVisible();
+  });
+
   test('candidate can start, progress through unique questions, and complete an interview', async ({ page }) => {
     await page.goto('/');
 
